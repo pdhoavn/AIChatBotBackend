@@ -1,0 +1,139 @@
+-- Truncate all tables
+TRUNCATE TABLE
+public."PersonalizedRecommendation",
+public."ChatInteraction",
+public."ParticipateChatSession",
+public."LiveChatQueue",
+public."UserPermission",
+public."DocumentChunk",
+public."KnowledgeBaseDocument",
+public."TrainingQuestionAnswer",
+public."FaqStatistics",
+public."AcademicScore",
+public."RiasecResult",
+public."AdmissionForm",
+public."AdmissionInformation",
+public."Article",
+public."Template_Field",
+public."Template",
+public."Specialization",
+public."Major",
+public."CustomerProfile",
+public."ConsultantProfile",
+public."ContentManagerProfile",
+public."AdmissionOfficialProfile",
+public."ChatSession",
+public."RiasecQuestion",
+public."Intent",
+public."Users",
+public."Permission",
+public."Role",
+public."Interest",
+public."RiasecTrait"
+CASCADE;
+
+-- Use setval to explicitly reset sequences to 1
+SELECT setval('public."Users_user_id_seq"', 1, false);
+SELECT setval('public."Role_role_id_seq"', 1, false);
+SELECT setval('public."Permission_permission_id_seq"', 1, false);
+SELECT setval('public."Intent_intent_id_seq"', 1, false);
+SELECT setval('public."Interest_interest_id_seq"', 1, false);
+SELECT setval('public."ChatSession_chat_session_id_seq"', 1, false);
+SELECT setval('public."ChatInteraction_interaction_id_seq"', 1, false);
+SELECT setval('public."TrainingQuestionAnswer_question_id_seq"', 1, false);
+SELECT setval('public."FaqStatistics_faq_id_seq"', 1, false);
+SELECT setval('public."Major_major_id_seq"', 1, false);
+SELECT setval('public."Specialization_specialization_id_seq"', 1, false);
+SELECT setval('public."Article_article_id_seq"', 1, false);
+SELECT setval('public."Template_template_id_seq"', 1, false);
+SELECT setval('public."Template_Field_template_field_id_seq"', 1, false);
+SELECT setval('public."KnowledgeBaseDocument_document_id_seq"', 1, false);
+SELECT setval('public."DocumentChunk_chunk_id_seq"', 1, false);
+SELECT setval('public."AdmissionInformation_id_seq"', 1, false);
+SELECT setval('public."AdmissionForm_form_id_seq"', 1, false);
+SELECT setval('public."AcademicScore_score_id_seq"', 1, false);
+SELECT setval('public."RiasecTrait_trait_code_id_seq"', 1, false);
+SELECT setval('public."RiasecQuestion_question_id_seq"', 1, false);
+SELECT setval('public."RiasecResult_result_id_seq"', 1, false);
+SELECT setval('public."PersonalizedRecommendation_recommendation_id_seq"', 1, false);
+SELECT setval('public."LiveChatQueue_id_seq"', 1, false);
+
+-------------------------- INSERT ---------------------
+-- Insert Roles
+INSERT INTO public."Role" (role_name) VALUES
+('admin'),
+('consultant'),
+('content_manager'),
+('admission_officer'),
+('customer');
+
+-- Insert Permissions
+INSERT INTO public."Permission" (permission_name) VALUES
+('admin'),
+('consultant'),
+('content_manager'),
+('admission_officer'),
+('customer');
+
+-- Insert Users WITHOUT explicit IDs - let sequences handle it
+INSERT INTO public."Users" (full_name, email, password, status, role_id, phone_number) VALUES
+('System Administrator', 'admin@gmail.com', '123', true, 1, '0123456789'),
+('John Student', 'student@gmail.com', '123', true, 5, '0987654321'),
+('Consultant Leader', 'consultant@gmail.com', '123', true, 2, '0111222333'),
+('Content Manager', 'content@gmail.com', '123', true, 3, '0222333444'),
+('Admission Officer', 'admission@gmail.com', '123', true, 4, '0333444555');
+
+-- Insert UserPermissions (get user IDs from the inserted users)
+INSERT INTO public."UserPermission" (permission_id, user_id) VALUES
+(1, (SELECT user_id FROM "Users" WHERE email = 'admin@gmail.com')),
+(5, (SELECT user_id FROM "Users" WHERE email = 'student@gmail.com')),
+(2, (SELECT user_id FROM "Users" WHERE email = 'consultant@gmail.com')),
+(3, (SELECT user_id FROM "Users" WHERE email = 'content@gmail.com')),
+(4, (SELECT user_id FROM "Users" WHERE email = 'admission@gmail.com'));
+
+-- Insert Interests
+INSERT INTO public."Interest" (desired_major, region) VALUES
+('Computer Science', 'Hanoi');
+
+-- Insert User Profiles (get user IDs from the inserted users)
+INSERT INTO public."CustomerProfile" (customer_id, interest_id) VALUES
+((SELECT user_id FROM "Users" WHERE email = 'student@gmail.com'), 1);
+
+INSERT INTO public."ConsultantProfile" (consultant_id, status, is_leader) VALUES
+((SELECT user_id FROM "Users" WHERE email = 'consultant@gmail.com'), true, true);
+
+INSERT INTO public."ContentManagerProfile" (content_manager_id, is_leader) VALUES
+((SELECT user_id FROM "Users" WHERE email = 'content@gmail.com'), true);
+
+INSERT INTO public."AdmissionOfficialProfile" (admission_official_id, rating, current_sessions, max_sessions, status) VALUES
+((SELECT user_id FROM "Users" WHERE email = 'admission@gmail.com'), 5, 0, 10, 'available');
+
+-- Continue with the rest of your insert statements...
+INSERT INTO public."Intent" (intent_name, description, created_at, created_by) VALUES
+('admission_requirements', 'Questions about admission requirements', CURRENT_DATE, (SELECT user_id FROM "Users" WHERE email = 'admin@gmail.com')),
+('scholarship_info', 'Questions about scholarships', CURRENT_DATE, (SELECT user_id FROM "Users" WHERE email = 'admin@gmail.com')),
+('tuition_fees', 'Questions about tuition fees', CURRENT_DATE, (SELECT user_id FROM "Users" WHERE email = 'admin@gmail.com')),
+('academic_programs', 'Questions about academic programs', CURRENT_DATE, (SELECT user_id FROM "Users" WHERE email = 'admin@gmail.com'));
+
+-- Insert Majors
+INSERT INTO public."Major" (name, created_by) VALUES
+('Computer Science', (SELECT user_id FROM "Users" WHERE email = 'admin@gmail.com')),
+('Business Administration', (SELECT user_id FROM "Users" WHERE email = 'admin@gmail.com')),
+('Electrical Engineering', (SELECT user_id FROM "Users" WHERE email = 'admin@gmail.com'));
+
+-- Insert Specializations
+INSERT INTO public."Specialization" (specialization_name, major_id) VALUES
+('Artificial Intelligence', 1),
+('Software Engineering', 1),
+('Finance', 2),
+('Marketing', 2);
+
+-- Insert Training Q&A
+INSERT INTO public."TrainingQuestionAnswer" (question, answer, intent_id, created_by, approved_by) VALUES
+('What are the admission requirements?', 'The admission requirements include high school diploma, entrance exam scores, and application form.', 1, (SELECT user_id FROM "Users" WHERE email = 'content@gmail.com'), (SELECT user_id FROM "Users" WHERE email = 'admin@gmail.com')),
+('Are there any scholarships available?', 'Yes, we offer merit-based and need-based scholarships. You can apply through our scholarship portal.', 2, (SELECT user_id FROM "Users" WHERE email = 'content@gmail.com'), (SELECT user_id FROM "Users" WHERE email = 'admin@gmail.com')),
+('How much is the tuition fee?', 'The tuition fee varies by program. Please check our website for detailed fee structure.', 3, (SELECT user_id FROM "Users" WHERE email = 'content@gmail.com'), (SELECT user_id FROM "Users" WHERE email = 'admin@gmail.com')),
+('What computer science programs do you offer?', 'We offer Bachelor of Computer Science with specializations in AI and Software Engineering.', 4, (SELECT user_id FROM "Users" WHERE email = 'content@gmail.com'), (SELECT user_id FROM "Users" WHERE email = 'admin@gmail.com'));
+
+-- Continue with the rest of your tables in the same pattern...
+-- For any table that references users, use: (SELECT user_id FROM "Users" WHERE email = 'email@gmail.com')

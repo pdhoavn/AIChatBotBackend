@@ -1,0 +1,34 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Deploy via SSH
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        command_timeout: 60m
+        script: |
+          # 1. Update code Backend
+          cd ~/app/backend
+          git pull origin main
+
+          # 2. update luôn code Frontend 
+          cd ../frontend
+          git pull origin main
+
+          # 3. Quay lại Backend để chạy lệnh
+          cd ../backend
+          
+          # 4. Build và chạy lại (Recreate backend containers)
+          docker compose up -d --build backend
+          
+          # Hoặc build lại toàn bộ cho chắc: docker compose up -d --build
+      

@@ -1,0 +1,65 @@
+Chào bạn, dưới đây là thông tin đầy đủ và cập nhật về Tuyển sinh hệ Đại học chính quy năm 2025 của Trường Đại học FPT (FPTU).
+Trường Đại học FPT công bố 4 phương thức tuyển sinh chính trong năm 2025:
+1. ⚙️ Các Phương thức Tuyển sinh chính (4 PT)
+PT 1: Xét kết quả xếp hạng học sinh THPT (SchoolRank)
+Đây là phương thức phổ biến và đặc trưng của Đại học FPT.
+Điều kiện xét tuyển:
+Đạt Top50 (hoặc Top55 đối với sinh viên thế hệ 1) xếp hạng học sinh THPT năm 2025, dựa trên kết quả học tập lớp 11 và học kỳ 1 lớp 12.
+Thí sinh cần tra cứu thứ hạng trên trang .
+Ngưỡng bổ sung: Điểm trung bình của tổ hợp [Toán + 2 môn bất kỳ] của học kỳ 2 năm lớp 12 phải đạt từ 21 điểm trở lên.
+PT 2: Xét kết quả thi Tốt nghiệp THPT năm 2025 (và các năm trước)
+Đối với thí sinh thi năm 2025: Ngưỡng đầu vào là đạt Top50 theo kết quả thi Tốt nghiệp THPT năm 2025 (điểm cụ thể sẽ công bố sau khi có kết quả thi).
+Tổ hợp tính điểm: Điểm xét tuyển được tính theo công thức: $[Điểm Toán \times 2 + Điểm 2 môn bất kỳ]$.
+Đối với thí sinh thi các năm trước: Ngưỡng đầu vào là đạt 21 điểm trở lên (hoặc 19.5 điểm đối với sinh viên thế hệ 1) với tổ hợp [Toán + 2 môn bất kỳ]
+PT 3: Xét kết quả kỳ thi Đánh giá Năng lực (ĐGNL)
+FPTU sử dụng kết quả của 2 kỳ thi ĐGNL:
+ĐHQG Hà Nội: Ngưỡng đầu vào đạt Top50 trong kỳ thi này (ví dụ: 78 điểm hoặc 80 điểm tùy đợt).
+ĐHQG TP.HCM: Ngưỡng đầu vào đạt Top50 trong kỳ thi này (ví dụ: 653 điểm tùy đợt).
+PT 4: Xét Tuyển thẳng (Theo quy định của Bộ GD&ĐT và quy định riêng của FPTU)
+Ngoài các đối tượng xét tuyển thẳng theo quy chế của Bộ GD&ĐT, FPTU còn có các đối tượng xét tuyển thẳng riêng:
+Thí sinh có chứng chỉ/văn bằng quốc tế (Tốt nghiệp THPT nước ngoài, Tốt nghiệp Đại học, Sinh viên chuyển trường từ các trường Top 1000 thế giới hoặc đạt chứng nhận QS Star 5 sao, v.v.).
+Học sinh các trường thuộc Tổ chức Giáo dục FPT tốt nghiệp THPT.
+Thí sinh có chứng chỉ ngoại ngữ:
+Ngôn ngữ Anh: TOEFL iBT >= 80 hoặc IELTS (Học thuật) >= 6.0 hoặc VSTEP Bậc 4 trở lên.
+Ngôn ngữ Nhật: JLPT từ N3 trở lên.
+Ngôn ngữ Hàn Quốc: TOPIK cấp độ 4 trở lên (trong kỳ thi TOPIK II).
+Ngôn ngữ Trung Quốc: HSK từ cấp độ 4 trở lên.
+1. 📋 Điều kiện nộp hồ sơ (Điều kiện sơ tuyển)
+Thí sinh cần đáp ứng một trong các điều kiện dưới đây để đủ điều kiện nộp hồ sơ, sau đó sẽ tiếp tục xét tuyển theo các phương thức cụ thể.
+a. 🎯 Theo SchoolRank
+Thí sinh đạt Top50 (hoặc Top55 đối với sinh viên thế hệ 1) xếp hạng học sinh THPT năm 2025 (dựa trên kết quả học tập lớp 11 và học kỳ 1 lớp 12).
+Thí sinh có thể tra cứu xếp hạng trực tuyến tại: .
+b. 🏛️ Theo Kỳ thi Tốt nghiệp THPT 2025
+Thí sinh đạt ngưỡng Top50 theo kết quả thi Tốt nghiệp THPT 2025 (điểm cụ thể sẽ công bố sau khi có kết quả thi).
+Lưu ý: Đối với thí sinh đã tốt nghiệp THPT các năm trước, ngưỡng đầu vào là đạt 21 điểm trở lên (hoặc 19.5 điểm đối với sinh viên thế hệ 1) với tổ hợp 3 môn bất kỳ.
+c. 📊 Theo Kỳ thi Đánh giá Năng lực (ĐGNL)
+Thí sinh đạt Top50 trong kỳ thi ĐGNL của ĐHQG Hà Nội (ví dụ: $\geq 80$ điểm tùy đợt) hoặc ĐHQG TP.HCM (ví dụ: $\geq 653$ điểm tùy đợt).
+d. 🏅 Xét Tuyển thẳng
+Thí sinh thuộc một trong các đối tượng sau được xét tuyển thẳng:
+Đạt giải Nhất, Nhì, Ba trong các kỳ thi Học sinh giỏi cấp Quốc gia.
+Thí sinh có chứng chỉ ngoại ngữ quốc tế:
+Ngôn ngữ Anh: TOEFL iBT $\geq 80$ hoặc IELTS (Học thuật) $\geq 6.0$ hoặc VSTEP Bậc 4 trở lên.
+Ngôn ngữ Nhật: JLPT từ N3 trở lên.
+Ngôn ngữ Hàn Quốc: TOPIK cấp độ 4 trở lên (TOPIK II).
+Ngôn ngữ Trung Quốc: HSK từ cấp độ 4 trở lên.
+Tốt nghiệp THPT nước ngoài hoặc tốt nghiệp Đại học.
+Học sinh các trường thuộc Tổ chức Giáo dục FPT tốt nghiệp THPT.
+2. 📝 Hồ sơ Đăng ký Tuyển sinh
+Sau khi đủ điều kiện sơ tuyển, thí sinh cần chuẩn bị các giấy tờ sau để hoàn thiện hồ sơ đăng ký nhập học:
+Phiếu đăng ký dự thi (theo mẫu của Trường Đại học FPT).
+Giấy chứng nhận kết quả xếp hạng (in từ trang SchoolRank.fpt.edu.vn) HOẶC Bản sao công chứng Giấy chứng nhận/Bằng khen (đối với đối tượng tuyển thẳng).
+Bản sao công chứng Học bạ THPT.
+Bản sao công chứng Chứng minh nhân dân/Căn cước công dân.
+Bản sao công chứng bằng Tốt nghiệp THPT (đối với thí sinh đã tốt nghiệp) HOẶC Giấy chứng nhận tốt nghiệp tạm thời (đối với thí sinh tốt nghiệp năm 2025).
+Bản sao công chứng Chứng chỉ ngoại ngữ (nếu có để xét tuyển thẳng hoặc quy đổi điểm).
+Lệ phí xét tuyển (theo quy định của trường).
+3. 🌐 Cách thức Đăng ký (Nộp hồ sơ)
+Thí sinh có thể đăng ký và nộp hồ sơ theo một trong hai cách sau:
+a. Đăng ký Trực tuyến (Online)
+Bước 1: Truy cập vào trang tuyển sinh chính thức của Trường Đại học FPT.
+Bước 2: Thực hiện tra cứu SchoolRank để biết thứ hạng sơ tuyển của mình.
+Bước 3: Hoàn thiện và nộp hồ sơ đăng ký dự thi/xét tuyển theo hướng dẫn trên hệ thống.
+Bước 4: Thực hiện nộp lệ phí xét tuyển và các khoản phí khác theo quy định.
+b. Đăng ký Trực tiếp (Tại các Văn phòng Tuyển sinh)
+Bước 1: Chuẩn bị đầy đủ các giấy tờ cần thiết trong mục Hồ sơ Đăng ký.
+Bước 2: Đến trực tiếp các văn phòng tuyển sinh tại các cơ sở của Đại học FPT (Hà Nội, TP.HCM, Đà Nẵng, Cần Thơ, Quy Nhơn) để được hướng dẫn điền phiếu và nộp hồ sơ.

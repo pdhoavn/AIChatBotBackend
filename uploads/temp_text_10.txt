@@ -1,0 +1,37 @@
+Chào bạn, dưới đây là thông tin chi tiết về Học phí, Học bổng và các chương trình Hỗ trợ tài chính tại Trường Đại học FPT (FPTU), dựa trên các thông báo tuyển sinh năm 2025 (hoặc năm học 2024-2025):
+1. 💰 Học phí (Áp dụng cho hệ Đại học Chính quy)
+Học phí tại Đại học FPT thường được chia thành 2 giai đoạn: Giai đoạn Tiếng Anh Dự bị (nếu chưa đạt chuẩn đầu vào) và Giai đoạn Chính khóa. Tổng thời gian đào tạo toàn khóa là 9 học kỳ (khoảng 3 năm), mỗi năm có 3 học kỳ.
+a. Học phí Chương trình Tiếng Anh Dự bị
+Mức học phí: Khoảng 11.900.000 VNĐ/mức (Level/Mức).
+Sinh viên sẽ học tối đa 6 mức cho đến khi đạt chuẩn tiếng Anh đầu vào để chuyển sang chương trình chính khóa.
+b. Học phí Chương trình Chính khóa (9 Học kỳ)
+Học phí có sự khác biệt giữa các cơ sở đào tạo (Campus) và nhóm ngành, đồng thời có xu hướng tăng nhẹ theo các năm học:
+Lưu ý:
+Mức học phí trên là ước tính dựa trên thông tin năm học 2024-2025 và có thể thay đổi tùy theo năm tuyển sinh 2025.
+Học phí đã bao gồm giáo trình, học liệu.
+Sinh viên cần đóng thêm Phí nhập học (khoảng 500.000 VNĐ - 4.600.000 VNĐ tùy cơ sở) và các chi phí cá nhân khác (ký túc xá, sinh hoạt...).
+2. 🎁 Học bổng và Hỗ trợ Tài chính
+Trường Đại học FPT có nhiều chương trình học bổng đa dạng, được đặt tên theo Giáo sư Nguyễn Văn Đạo, dành cho các thí sinh tài năng và có hoàn cảnh khó khăn. Tổng số suất học bổng dự kiến năm 2025 là 2800 suất.
+a. Các Loại Học bổng Tài năng & Học đường (Miễn Học phí)
+b. Học bổng Khác
+Học bổng Trường THPT: Mỗi trường THPT trên toàn quốc có thể nhận một suất học bổng toàn phần dành cho học sinh Top 10 SchoolRank của trường đó.
+Học bổng FPTU Tuổi 18 (Tham khảo 2024): Dành cho thí sinh đạt từ 25 điểm thi tốt nghiệp THPT trở lên.
+3. 💸 Chính sách Hỗ trợ Tài chính (Học trước – Trả sau)
+Chính sách này nhằm hỗ trợ sinh viên có hoàn cảnh gia đình khó khăn, giúp sinh viên yên tâm học tập mà không cần lo lắng về học phí ban đầu.
+Đối tượng: 1000 sinh viên có hoàn cảnh khó khăn, đáp ứng đủ điều kiện xét tuyển vào trường.
+Hình thức hỗ trợ: Sinh viên được hỗ trợ trả dần học phí trong vòng 5 năm sau khi tốt nghiệp.
+Mức hỗ trợ: Đa dạng, có thể lên đến 30%, 50% hoặc 70% học phí toàn khóa học.
+
+--- TABLE ---
+Cơ sở Đào tạo | Giai đoạn/Học kỳ | Mức Học phí (Tham khảo)
+Hà Nội & TP.HCM | 3 Học kỳ đầu (HK 1-3) | Khoảng 28.700.000 VNĐ/học kỳ
+| 3 Học kỳ tiếp theo (HK 4-6) | Khoảng 30.500.000 VNĐ/học kỳ
+| 3 Học kỳ cuối (HK 7-9) | Khoảng 32.500.000 VNĐ/học kỳ
+Đà Nẵng & Cần Thơ | Toàn khóa học | Thường có mức ưu đãi học phí (ví dụ: khoảng 21.000.000 – 24.000.000 VNĐ/học kỳ hoặc ưu đãi khoảng 30% so với HN/TP.HCM)
+
+--- TABLE ---
+Tên Học bổng | Số lượng (Dự kiến 2025) | Giá trị | Tiêu chí chính
+Chuyên gia toàn cầu | 100 suất | Miễn 100% học phí toàn khóa + Tài trợ 30 triệu VNĐ/năm chi phí sinh hoạt | Đạt giải Nhất, Nhì, Ba Học sinh giỏi Quốc gia (chủ yếu ngành Công nghệ thông tin).
+Học bổng Học đường | 900 suất | Miễn 100% học phí toàn khóa | Dành cho sinh viên thuộc Khu vực 1 (khu vực kinh tế-xã hội đặc biệt khó khăn).
+Học bổng 2 năm | 500 suất | Miễn học phí 2 năm đầu tiên | Đạt giải Nhì HSG cấp Quốc gia HOẶC đạt điểm $\geq 85\%$ kỳ thi ĐGNL ĐHQG HOẶC đạt điểm TB $\geq 8.5$ thi TN THPT 2025 (Toán + 2 môn bất kỳ).
+Học bổng 1 năm | 1000 suất | Miễn học phí 1 năm đầu tiên | Đạt giải Ba HSG cấp Quốc gia HOẶC đạt điểm $\geq 80\%$ kỳ thi ĐGNL ĐHQG HOẶC đạt điểm TB $\geq 8.0$ thi TN THPT 2025 (Toán + 2 môn bất kỳ).

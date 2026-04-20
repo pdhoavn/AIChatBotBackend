@@ -1,0 +1,16 @@
+node_modules
+.env
+.env.local
+.env.production
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local development documentation (exclude from repository)
+LOCAL_NOTES/
+SESSION_CHANGES/
+
+# Test data scripts
+switch-env.sh

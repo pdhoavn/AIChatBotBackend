@@ -1,0 +1,75 @@
+Giới thiệu chung về đào tạo tại Đại học FPT
+Chương trình học thiết kế theo chuẩn đầu ra hướng thị trường lao động, kết hợp lý thuyết & thực hành, tập trung mạnh vào học qua dự án và thực tập On-The-Job Training (OJT) từ năm 3.
+Hầu hết môn học, giáo trình, bài thi, khóa luận… có thể sử dụng tiếng Anh. Ngoài ra sinh viên còn học thêm ngoại ngữ thứ 2 (tiếng Nhật, Hàn hoặc Trung), nhằm nâng cao năng lực quốc tế.
+Trường thường xuyên cập nhật chương trình, tích hợp các xu hướng công nghệ mới (như AI), nhằm đáp ứng nhu cầu việc làm thực tế.
+Các Khối ngành và Chuyên ngành đào tạo chính
+Trường Đại học FPT tuyển sinh các ngành học thuộc 4 khối ngành chính:
+1. 💻 Khối ngành Công nghệ Thông tin (CNTT)
+Đây là khối ngành chủ lực của FPTU, đào tạo các chuyên gia công nghệ có khả năng làm việc trong kỷ nguyên số và AI.
+Ngành Công nghệ thông tin (IT):
+Kỹ thuật phần mềm.
+Hệ thống thông tin.
+Trí tuệ nhân tạo (AI).
+Khoa học dữ liệu ứng dụng
+An toàn thông tin (An ninh mạng và An toàn số).
+Thiết kế mỹ thuật số (Thiết kế đồ họa).
+Vi mạch bán dẫn
+Internet of Things (IoT).
+Công nghệ ô tô số (dự kiến).
+Xử lý dịch vụ số (dự kiến).
+Chương trình Cử nhân tài năng Ngành Khoa học máy tính (gồm Trí tuệ nhân tạo & Khoa học dữ liệu, An ninh mạng & An toàn số).
+2. 📈 Khối ngành Quản trị Kinh doanh
+Đào tạo sinh viên có kiến thức quản lý, kinh tế và kỹ năng mềm để lãnh đạo trong môi trường kinh doanh toàn cầu.
+Ngành Quản trị kinh doanh:
+Phân tích kinh doanh (Business Analytics).
+Kinh doanh quốc tế
+Thương mại điện tử
+Quản trị giải trí và sự kiện
+Quản trị trải nghiệm khách hàng
+Quản trị thu mua
+Tài chính doanh nghiệp
+Tài chính thông minh
+Tài chính ngân hàng
+Marketing
+Quản trị Khách sạn.
+Quản trị Dịch vụ Du lịch và Lữ hành.
+Logistics và Quản lý chuỗi cung ứng toàn cầu.
+Công nghệ Tài chính (Fintech).
+3. 🗣️ Khối ngành Ngôn ngữ
+Tập trung đào tạo ngoại ngữ chuyên sâu, kết hợp với kiến thức thương mại/văn hóa.
+Ngành Ngôn ngữ:
+Ngôn ngữ Anh
+Tiếng Anh thương mại
+Ngôn ngữ Nhật
+Tiếng Nhật thương mại
+Ngôn ngữ Hàn Quốc
+Tiếng Hàn thương mại
+Ngôn ngữ Trung Quốc
+Tiếng Trung thương mại
+4. 📢 Khối ngành Công nghệ Truyền thông
+Đào tạo chuyên gia trong lĩnh vực truyền thông số, marketing và sáng tạo nội dung.
+Ngành Công nghệ Truyền thông:
+Truyền thông đa phương tiện.
+Quan hệ công chúng.
+Truyền thông Marketing tích hợp (IMC).
+Truyền thông thương hiệu.
+Chương trình đào tạo và Lộ trình học tập
+Chương trình của FPTU được xây dựng theo chuẩn quốc tế, tập trung vào thực hành, ngoại ngữ và phát triển cá nhân với lộ trình học tập 4 giai đoạn rõ ràng:
+1. Giai đoạn Cơ bản (Dự bị)
+Mục tiêu: Giúp sinh viên đạt chuẩn ngoại ngữ đầu vào chuyên ngành.
+Hoạt động: Tập trung đào tạo Tiếng Anh (theo lộ trình riêng) để sinh viên có thể học giáo trình chuyên ngành bằng tiếng Anh.
+Bản sắc: Sinh viên học các môn bắt buộc về Võ Vovinam (Giáo dục thể chất), Nhạc cụ dân tộc (Phát triển cá nhân), và tham gia Tháng rèn luyện tập trung (học kỳ quân sự/định hướng).
+2. Giai đoạn Cơ sở ngành và Chuyên môn
+Mục tiêu: Cung cấp kiến thức nền tảng và cơ sở ngành chuyên sâu.
+Hoạt động: Học các môn chuyên ngành bằng Tiếng Anh, được trang bị các kỹ năng mềm cần thiết như giao tiếp, làm việc nhóm, tư duy phản biện, tư duy khởi nghiệp.
+3. Giai đoạn Thực tập tại doanh nghiệp (On-The-Job Training - OJT)
+Mục tiêu: Trải nghiệm làm việc thực tế tại doanh nghiệp.
+Hoạt động: Sinh viên được đi thực tập toàn thời gian tại các công ty thuộc Tập đoàn FPT hoặc các đối tác liên kết từ năm thứ 3. Đây là điểm khác biệt lớn, giúp sinh viên áp dụng kiến thức vào thực tế, tích lũy kinh nghiệm và làm quen với môi trường làm việc chuyên nghiệp.
+4. Giai đoạn Chuyên sâu và Tốt nghiệp
+Mục tiêu: Hoàn thiện kiến thức chuyên môn, thực hiện đồ án/khóa luận tốt nghiệp.
+Hoạt động: Tiếp cận kiến thức chuyên sâu và cập nhật xu hướng mới nhất trong ngành, đảm bảo đầu ra đáp ứng chuẩn yêu cầu của thị trường lao động.
+🌟 Đặc điểm nổi bật của Chương trình
+Chất lượng giáo dục quốc tế: Chương trình được thiết kế theo tiêu chuẩn của các trường đại học hàng đầu thế giới.
+Thành thạo 02 ngoại ngữ: Sinh viên được đào tạo để thành thạo Tiếng Anh và một ngoại ngữ thứ hai (Nhật, Hàn hoặc Trung), sẵn sàng cho sự nghiệp toàn cầu.
+Học đi đôi với hành: Tăng cường thực hành, giảm tải lý thuyết hàn lâm, với OJT bắt buộc từ năm 3.
+Môi trường trải nghiệm: Phát triển cá nhân toàn diện thông qua các hoạt động văn hóa, thể thao, và các môn học bản sắc (Vovinam, Nhạc cụ dân tộc).

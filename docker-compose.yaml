@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  # --- 1. FastAPI Service ---
+  backend:
+    build: .
+    container_name: chatbot_backend
+    command: gunicorn --bind 0.0.0.0:8000 --workers 1 --worker-class uvicorn.workers.UvicornWorker --timeout 120 app.main:app
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount thư mục uploads ra ngoài để không mất file khi restart container
+      - ./uploads:/code/uploads
+    environment:
+      # Kết nối Database (Lưu ý: host là 'db', không phải localhost)
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+
+      # Kết nối Qdrant (Lưu ý: host là 'qdrant')
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # --- APP CONFIG ---
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - LLM_MODEL=${LLM_MODEL}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
+      # Các key khác sẽ tự load từ file .env
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - qdrant
+    networks:
+      - chatbot_net
+    restart: always
+
+  # --- 2. PostgreSQL Service ---
+  db:
+    image: postgres:15-alpine
+    container_name: postgres-db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    networks:
+      - chatbot_net
+    restart: always
+  frontend:
+    build: ../frontend
+    container_name: react_frontend
+    ports:
+      - "80:80" # Mở cổng 80 ra ngoài internet
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf # Mount file nginx từ backend sang
+    depends_on:
+      - backend
+    networks:
+      - chatbot_net
+  # --- 3. Qdrant Service (Vector DB) ---
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: chatbot_qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    networks:
+      - chatbot_net
+    restart: always
+  # --- 4. pgAdmin Service ---
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin_gui
+    ports:
+      - "5050:80" # Mapping port 5050 máy local vào port 80 container
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@gmail.com
+      - PGADMIN_DEFAULT_PASSWORD=1234
+    volumes:
+      # Mount volume này để không bị mất danh sách server đã lưu khi tắt container
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - chatbot_net
+    depends_on:
+      - db
+    restart: always
+# Định nghĩa Volumes bền vững
+volumes:
+  postgres_data:
+  qdrant_storage:
+  pgadmin_data: # Định nghĩa Network riêng
+networks:
+  chatbot_net:
+    driver: bridge
