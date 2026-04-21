@@ -37,6 +37,7 @@ class TrainingService:
         )
         self.training_qa_collection = "training_qa"
         self.documents_collection = "knowledge_base_documents"
+        self.university_name = os.getenv("CHAT_UNIVERSITY_NAME", "Đại học Giao thông Vận tải")
         self._init_collections()
 
     def _init_collections(self):
@@ -216,7 +217,7 @@ class TrainingService:
         chat_history = mem_vars.get("chat_history", "")
 
         prompt = f"""
-        Bạn là một trợ lý chuẩn hóa truy vấn cho chatbot RAG tư vấn tuyển sinh Đại học FPT.
+        Bạn là một trợ lý chuẩn hóa truy vấn cho chatbot RAG tư vấn tuyển sinh {self.university_name}.
 
         Cuộc hội thoại gần đây:
         {chat_history}
@@ -451,7 +452,7 @@ class TrainingService:
             chat_history = mem_vars.get("chat_history", "")
             
 
-            prompt = f"""Bạn là một tư vấn viên tuyển sinh chuyên nghiệp của trường đại học FPT
+            prompt = f"""Bạn là một tư vấn viên tuyển sinh chuyên nghiệp của trường {self.university_name}
             Đây là đoạn hội thoại trước: 
             {chat_history}
             === THÔNG TIN THAM KHẢO ===
@@ -464,7 +465,7 @@ class TrainingService:
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
             - Trả lời theo định dạng Markdown: dùng tiêu đề ##, gạch đầu dòng -, xuống dòng rõ ràng.
             - Hãy tạo ra câu trả lời không quá dài, gói gọn ý chính, chỉ khi câu hỏi yêu cầu "chi tiết" thì mới tạo câu trả lời đầy đủ
-            - Bạn là tư vấn tuyển sinh của trường đại học FPT, nếu thông tin câu hỏi yêu câu tên 1 trường khác thì hãy nói rõ ra là không tìm thấy thông tin
+            - Bạn là tư vấn tuyển sinh của trường {self.university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
             - Nếu không tìm thấy thông tin, hãy nói rõ và gợi ý liên hệ trực tiếp nhân viên tư vấn
             - Không cần phải chào hỏi mỗi lần trả lời, vào thẳng vấn đề chính
             - Nếu câu hỏi chỉ là chào hỏi, hoặc các câu xã giao, hãy trả lời bằng lời chào thân thiện, giới thiệu về bản thân chatbot, KHÔNG kéo thêm thông tin chi tiết trong context.
@@ -535,7 +536,7 @@ class TrainingService:
             chat_history = mem_vars.get("chat_history", "")
 
             prompt = f"""
-            Bạn là chatbot tư vấn tuyển sinh của trường đại học FPT.
+            Bạn là chatbot tư vấn tuyển sinh của trường {self.university_name}.
             Đây là đoạn hội thoại trước: 
             {chat_history}
             === CÂU TRẢ LỜI CHÍNH THỨC ===
@@ -548,7 +549,7 @@ class TrainingService:
             - Trả lời theo định dạng Markdown: dùng tiêu đề ##, gạch đầu dòng -, xuống dòng rõ ràng.
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
             - Hãy trả lời chính xác bằng "CÂU TRẢ LỜI CHÍNH THỨC" mà KHÔNG SUY DIỄN THÊM.
-            - Bạn là tư vấn tuyển sinh của trường đại học FPT, nhớ kiểm tra kĩ rõ ràng câu hỏi, nếu thông tin câu hỏi yêu câu tên 1 trường khác thì hãy nói rõ ra là không tìm thấy thông tin
+            - Bạn là tư vấn tuyển sinh của trường {self.university_name}, nhớ kiểm tra kĩ rõ ràng câu hỏi, nếu câu hỏi yêu cầu thông tin của một trường khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
             - Nếu câu hỏi chỉ là chào hỏi, hỏi thời tiết, hoặc các câu xã giao, hãy trả lời bằng lời chào thân thiện, giới thiệu về bản thân chatbot, KHÔNG kéo thêm thông tin chi tiết trong context.
             - Không cần phải chào hỏi mỗi lần trả lời, vào thẳng vấn đề chính
             """
@@ -639,7 +640,7 @@ class TrainingService:
                 maj_texts.append(line)
 
             prompt = f"""
-        Bạn là chatbot tư vấn tuyển sinh của trường đại học FPT. Nhiệm vụ của bạn là tư vấn chọn ngành:
+        Bạn là chatbot tư vấn tuyển sinh của trường {self.university_name}. Nhiệm vụ của bạn là tư vấn chọn ngành:
         **CHỈ tư vấn chọn ngành khi câu hỏi của người dùng thật sự liên quan.**
         
         Đây là đoạn hội thoại trước: 
@@ -736,7 +737,7 @@ class TrainingService:
             chat_history = mem_vars.get("chat_history", "")
 
             prompt = f"""
-            Bạn là chatbot tư vấn tuyển sinh của trường đại học FPT.
+            Bạn là chatbot tư vấn tuyển sinh của trường {self.university_name}.
             Đây là đoạn hội thoại trước: 
             {chat_history}
             === CÂU TRẢ LỜI CHÍNH THỨC ===
@@ -746,7 +747,7 @@ class TrainingService:
             {query}
 
             === HƯỚNG DẪN TRẢ LỜI ===
-            Bạn là tầng phản hồi của chatbot tư vấn tuyển sinh Đại học FPT.
+            Bạn là tầng phản hồi của chatbot tư vấn tuyển sinh {self.university_name}.
 
             Nhiệm vụ của bạn KHÔNG phải trả lời kiến thức,
             mà là xử lý tình huống, tự tạo câu phản hồi phù hợp với CÂU HỎI NGƯỜI DÙNG khi NGỮ CẢNH ĐƯỢC CUNG CẤP
@@ -1198,15 +1199,19 @@ class TrainingService:
             List of document chunks
         """
         
-        query_embedding = self.embeddings.embed_query(query)
-        
-        results = self.qdrant_client.search(
-            collection_name=self.documents_collection,
-            query_vector=query_embedding,
-            limit=top_k
-        )
-        
-        return results
+        try:
+            query_embedding = self.embeddings.embed_query(query)
+
+            results = self.qdrant_client.search(
+                collection_name=self.documents_collection,
+                query_vector=query_embedding,
+                limit=top_k
+            )
+
+            return results
+        except Exception as e:
+            print(f"Qdrant search_documents timeout/error: {e}")
+            return []
     
     def search_training_qa(self, query: str, top_k: int = 5):
         """
@@ -1225,15 +1230,19 @@ class TrainingService:
             List of search results with scores
         """
         
-        query_embedding = self.embeddings.embed_query(query)
-        
-        results = self.qdrant_client.search(
-            collection_name=self.training_qa_collection,
-            query_vector=query_embedding,
-            limit=top_k
-        )
-        
-        return results
+        try:
+            query_embedding = self.embeddings.embed_query(query)
+
+            results = self.qdrant_client.search(
+                collection_name=self.training_qa_collection,
+                query_vector=query_embedding,
+                limit=top_k
+            )
+
+            return results
+        except Exception as e:
+            print(f"Qdrant search_training_qa timeout/error: {e}")
+            return []
     def hybrid_search(self, query: str):
         """
         Hybrid RAG Search Strategy

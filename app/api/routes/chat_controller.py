@@ -60,7 +60,16 @@ async def websocket_chat(websocket: WebSocket):
             # doc_results = TrainingService.search_documents(message, top_k=5)
            
             # Hybrid search (cả training QA và document)
-            result = service.hybrid_search(enriched_query)
+            try:
+                result = service.hybrid_search(enriched_query)
+            except Exception as e:
+                print(f"Hybrid search error: {e}")
+                await websocket.send_json({
+                    "event": "chunk",
+                    "content": "Hệ thống đang bận hoặc kho dữ liệu tạm thời không phản hồi. Bạn thử lại sau ít phút nhé."
+                })
+                await websocket.send_json({"event": "done", "sources": [], "confidence": 0.0})
+                continue
             tier_source = result.get("response_source")
             confidence = result.get("confidence", 0.0)
 
