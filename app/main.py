@@ -1,11 +1,15 @@
-from fastapi import FastAPI
+import logging
+import os
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
-from fastapi import Request
+from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
-from app.core.config import settings
+from sqlalchemy import text
 
+from app.core.config import settings
+from app.models.database import engine
 from app.api.routes import (
     knowledge_base_controller,
     chat_controller,
@@ -23,8 +27,8 @@ from app.api.routes import (
     template_controller,
     analytics_controller
 )
-from app.models.database import init_db
-import os
+
+logger = logging.getLogger(__name__)
 
 # OAuth2 scheme for Swagger UI
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
@@ -112,9 +116,28 @@ async def internal_server_error_handler(request: Request, exc: Exception):
     response.headers["Access-Control-Allow-Credentials"] = "true"
     return response
 
-async def startup_event():
-    init_db()
-app.add_event_handler("startup",startup_event)
+async def startup_event() -> None:
+    """
+    Application startup handler.
+
+    The database schema is managed externally on the hosted server.
+    Table creation via create_all() is intentionally omitted here to avoid
+    blocking the async event loop during startup (create_all is synchronous
+    and performs one round-trip per table, which causes timeouts on remote
+    connections).
+
+    Instead, a lightweight connectivity check is performed to confirm that
+    the application can reach the database before accepting requests.
+    """
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        logger.info("Database connectivity check passed.")
+    except Exception as exc:
+        logger.error("Database connectivity check failed: %s", exc)
+
+
+app.add_event_handler("startup", startup_event)
 
 
 app.include_router(live_chat_controller.router, prefix="/live_chat")

@@ -31,7 +31,9 @@ class TrainingService:
         )
         self.qdrant_client = QdrantClient(
             host=os.getenv("QDRANT_HOST", "localhost"),
-            port=int(os.getenv("QDRANT_PORT", 6333))
+            port=int(os.getenv("QDRANT_PORT", 6333)),
+            timeout=30,
+            check_compatibility=False,
         )
         self.training_qa_collection = "training_qa"
         self.documents_collection = "knowledge_base_documents"

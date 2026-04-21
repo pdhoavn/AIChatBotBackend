@@ -32,18 +32,6 @@ async def websocket_chat(websocket: WebSocket):
             "session_id": session_id
         })
 
-    # 2️⃣ Sau khi nhận xong → gửi lời chào
-    greeting_chunks = [
-        "Rất vui được đồng hành cùng bạn!\nMình có thể giúp bạn:",
-        "\n\n1️⃣ Giới thiệu ngành học, chương trình đào tạo.",
-        "\n\n2️⃣ Tư vấn lộ trình học tập và cơ hội nghề nghiệp.",
-        "\n\n3️⃣ Cung cấp thông tin tuyển sinh, học bổng, ký túc xá.",
-        "\n\nBạn muốn bắt đầu tìm hiểu về lĩnh vực nào trước? 😄"
-    ]
-    for chunk in greeting_chunks:
-        await websocket.send_json({"event": "chunk", "content": chunk})
-        await asyncio.sleep(0.05)
-
     await websocket.send_json({"event": "go", "sources": [], "confidence": 1.0})
  
     try:

@@ -1,5 +1,5 @@
 
-psycopg2
+psycopg2-binary
 fastapi==0.104.1              # Web framework
 gunicorn==22.0.0
 uvicorn[standard]==0.24.0     # ASGI server
@@ -19,10 +19,10 @@ pydantic[email]
 
 # Compatible triple for LangChain 1.0+
 # (classic chains and memory are now in langchain-classic)
-langchain==1.0.0              # LLM orchestration framework
-langchain-core==1.0.2
-langchain-community==0.4.1
-langchain-google-genai==3.0.0 # Gemini integration
+langchain>=0.1.0              # LLM orchestration framework
+langchain-core>=0.1.0
+langchain-community>=0.0.1
+langchain-google-genai>=0.0.1 # Gemini integration
 langchain-openai
 langchain_text_splitters
 
