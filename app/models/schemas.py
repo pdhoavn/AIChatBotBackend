@@ -301,6 +301,7 @@ class TrainingQuestionRequest(BaseModel):
     question: str
     answer: str
     intent_id: Optional[int]
+    target_audiences: Optional[List[str]] = []
 
 
 class TrainingQuestionResponse(TrainingQuestionRequest):
@@ -312,6 +313,7 @@ class TrainingQuestionResponse(TrainingQuestionRequest):
     created_by: Optional[int] = None
     approved_by: Optional[int] = None
     reject_reason: Optional[str] = None
+    target_audiences: Optional[List[str]] = []
 
     class Config:
         orm_mode = True
@@ -341,6 +343,7 @@ class KnowledgeBaseDocumentBase(BaseModel):
     updated_at: Optional[date]
     created_by: Optional[int]
     reject_reason: Optional[str] = None
+    target_audiences: Optional[List[str]] = []
 
 
 class KnowledgeBaseDocumentResponse(KnowledgeBaseDocumentBase):
@@ -349,6 +352,7 @@ class KnowledgeBaseDocumentResponse(KnowledgeBaseDocumentBase):
     reviewed_by: Optional[int] = None
     reviewed_at: Optional[date] = None
     reject_reason: Optional[str] = None
+    target_audiences: Optional[List[str]] = []
 
     class Config:
         orm_mode = True

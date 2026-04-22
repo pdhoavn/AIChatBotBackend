@@ -2,6 +2,7 @@ import datetime
 from sqlalchemy import (
     Column, Integer, String, Boolean, Date, Float, ForeignKey, Text
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from datetime import datetime
 from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy import create_engine
@@ -362,6 +363,7 @@ class TrainingQuestionAnswer(Base):
     approved_by = Column(Integer, ForeignKey("Users.user_id"), nullable=True)
     approved_at = Column(Date, nullable=True)
     reject_reason = Column(String, nullable=True)
+    target_audiences = Column(ARRAY(String), default=[])
     # removed rejected_by/rejected_at: rejection author/date are not stored as separate columns
     
     # Relationships
@@ -410,6 +412,7 @@ class KnowledgeBaseDocument(Base):
     reviewed_by = Column(Integer, ForeignKey('Users.user_id'), nullable=True)
     reviewed_at = Column(Date, nullable=True)
     reject_reason = Column(String, nullable=True)
+    target_audiences = Column(ARRAY(String), default=[])
     
     intent = relationship('Intent', back_populates='document')
     # Relationships

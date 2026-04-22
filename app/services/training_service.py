@@ -867,11 +867,12 @@ class TrainingService:
             db.rollback()
             print(f"Error updating FaqStatistics: {e}")
 
-    def create_training_qa(self, db: Session, intent_id: int, question: str, answer: str, created_by: int):
+    def create_training_qa(self, db: Session, intent_id: int, question: str, answer: str, target_audiences: List[str], created_by: int):
         qa = TrainingQuestionAnswer(
             question=question,
             answer=answer,
             intent_id=intent_id,
+            target_audiences=target_audiences,
             created_by=created_by,
             status="draft"
         )
@@ -949,11 +950,12 @@ class TrainingService:
 
         return {"deleted_question_id": qa_id}
 
-    def create_document(self, db: Session, title: str, file_path: str, intend_id: int, created_by: int):
+    def create_document(self, db: Session, title: str, file_path: str, intend_id: int, target_audiences: List[str], created_by: int):
         new_doc = KnowledgeBaseDocument(
             title=title,
             file_path=file_path,
             intend_id=intend_id,
+            target_audiences=target_audiences,
             status="draft",
             created_by=created_by,
         )

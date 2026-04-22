@@ -105,6 +105,7 @@ def api_create_training_qa(
         intent_id=payload.intent_id,
         question=payload.question,
         answer=payload.answer,
+        target_audiences=payload.target_audiences or [],
         created_by=current_user_id
     )
 
@@ -119,6 +120,7 @@ async def upload_document(
     file: UploadFile = File(...),
     title: str = Form(None),
     category: str = Form(None),
+    target_audiences: List[str] = Form([]),
     current_user_id: int = Form(1),
     db: Session = Depends(get_db)
 ):
@@ -187,6 +189,7 @@ async def upload_document(
             title=file.filename,
             file_path=str(file_path),       # <-- file text chứ không phải file gốc
             intend_id=intend_id,
+            target_audiences=target_audiences,
             created_by=current_user_id
         )
 
@@ -244,7 +247,8 @@ def get_all_training_questions(
             "approved_at": tqa.approved_at,
             "created_by": tqa.created_by,
             "approved_by": tqa.approved_by,
-            "reject_reason": getattr(tqa, 'reject_reason', None)
+            "reject_reason": getattr(tqa, 'reject_reason', None),
+            "target_audiences": getattr(tqa, 'target_audiences', [])
         })
     
     return result
@@ -285,7 +289,8 @@ def get_all_documents(
             "status": doc.status,
             "reviewed_by": doc.reviewed_by,
             "reviewed_at": doc.reviewed_at,
-            "reject_reason": getattr(doc, 'reject_reason', None)
+            "reject_reason": getattr(doc, 'reject_reason', None),
+            "target_audiences": getattr(doc, 'target_audiences', [])
         })
     
     return result
@@ -366,7 +371,8 @@ def get_document_by_id(
         "status": document.status,
         "reviewed_by": document.reviewed_by,
         "reviewed_at": document.reviewed_at,
-        "reject_reason": getattr(document, 'reject_reason', None)
+        "reject_reason": getattr(document, 'reject_reason', None),
+        "target_audiences": getattr(document, 'target_audiences', [])
     }
 
 
@@ -565,6 +571,7 @@ def get_pending_training_questions(
             "created_by": q.created_by,
             "approved_by": q.approved_by,
             "reject_reason": getattr(q, "reject_reason", None),
+            "target_audiences": getattr(q, "target_audiences", []),
         }
         for q in questions
     ]
