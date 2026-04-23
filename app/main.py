@@ -14,6 +14,8 @@ from app.api.routes import (
     knowledge_base_controller,
     chat_controller,
     auth_controller,
+    intent2_controller,
+    target_audience_controller,
     profile_controller,
     major_controller,
     specialization_controller,
@@ -138,8 +140,8 @@ async def startup_event() -> None:
 
 
 app.add_event_handler("startup", startup_event)
-
-
+app.include_router(target_audience_controller.router, prefix="/audiences",tags=["Target Audience"])
+app.include_router(intent2_controller.router, prefix="/intents2",tags=["Intent 2"])
 app.include_router(live_chat_controller.router, prefix="/live_chat")
 app.include_router(auth_controller.router, prefix="/auth", tags=["Authentication"])
 app.include_router(users_controller.router, prefix="/users", tags=["Users"])

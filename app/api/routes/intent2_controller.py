@@ -8,7 +8,7 @@ from app.core.security import get_current_user, has_permission
 
 router = APIRouter()
 
-@router.get("/intent/{intent_id}", response_model=schemas.IntentResponse, tags=["Intent"])
+@router.get("/{intent_id}", response_model=schemas.IntentResponse, tags=["Intent"])
 def read_intent(intent_id: int, db: Session = Depends(get_db)):
     """
     Get intent by ID. Users with view permission can access.
@@ -18,7 +18,7 @@ def read_intent(intent_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Intent not found")
     return db_intent
 
-@router.get("", response_model=List[schemas.IntentResponse], tags=["Intent"])
+@router.get("", response_model=List[schemas.IntentResponse2], tags=["Intent"])
 def read_intents(db: Session = Depends(get_db)):
     """
     Get a list of intents. Users with view permission can access.
