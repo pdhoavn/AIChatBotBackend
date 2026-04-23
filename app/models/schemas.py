@@ -17,7 +17,6 @@ class TargetAudienceSimple(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
-    intent_id: int
     class Config:
         orm_mode = True
 class LoginRequest(BaseModel):
@@ -306,7 +305,7 @@ class IntentResponse2(BaseModel):
     intent_id: int
     intent_name: str
     description: Optional[str]
-    
+    target_audience_id: int
     class Config:
         orm_mode = True
 
