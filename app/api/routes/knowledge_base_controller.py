@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 
 from app.models.database import init_db, get_db
-from app.models.schemas import TrainingQuestionRequest, TrainingQuestionResponse, KnowledgeBaseDocumentResponse
+from app.models.schemas import TrainingQuestionRequest, TrainingQuestionResponse, KnowledgeBaseDocumentResponse, IntentResponse
 from app.models import entities
 from app.services.training_service import TrainingService
 from app.utils.document_processor import documentProcessor
@@ -266,8 +266,10 @@ def get_all_documents(
     - All users can see all documents regardless of status
     - Use ?status= query parameter to filter by specific status
     """
-    # Build query
-    query = db.query(entities.KnowledgeBaseDocument)
+    # Build query with intent joined to avoid N+1
+    query = db.query(entities.KnowledgeBaseDocument).options(
+        joinedload(entities.KnowledgeBaseDocument.intent)
+    )
     
     # Apply status filter if provided
     if status:
@@ -290,10 +292,35 @@ def get_all_documents(
             "reviewed_by": doc.reviewed_by,
             "reviewed_at": doc.reviewed_at,
             "reject_reason": getattr(doc, 'reject_reason', None),
-            "target_audiences": getattr(doc, 'target_audiences', [])
+            "target_audiences": getattr(doc, 'target_audiences', []),
+            "intent_id": doc.intent.intent_id if doc.intent else None,
+            "intent_name": doc.intent.intent_name if doc.intent else None
         })
     
     return result
+
+@router.get("/intentbyid", response_model=List[IntentResponse])
+def get_categories(
+    target_audience: str = Query(None, description="Filter by target audience (e.g., 'Viên chức/Ngưới lao động')"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get distinct intents linked to knowledge base documents.
+    Optionally filter by target_audience to only return intents relevant to the selected audience.
+    """
+    query = db.query(entities.Intent).join(
+        entities.KnowledgeBaseDocument,
+        entities.Intent.intent_id == entities.KnowledgeBaseDocument.intend_id
+    )
+
+    if target_audience:
+        query = query.filter(entities.KnowledgeBaseDocument.target_audiences.any(target_audience))
+
+    # Only include documents that are actually linked to an intent
+    query = query.filter(entities.KnowledgeBaseDocument.intend_id.isnot(None))
+
+    intents = query.distinct().all()
+    return intents
 
 @router.get("/documents/{document_id}/download")
 def download_document(
@@ -421,11 +448,31 @@ def get_pending_documents(
     Get all documents pending review (status=draft).
     Only Admin or ConsultantLeader can access this endpoint.
     """
-    documents = db.query(entities.KnowledgeBaseDocument).filter(
+    documents = db.query(entities.KnowledgeBaseDocument).options(
+        joinedload(entities.KnowledgeBaseDocument.intent)
+    ).filter(
         entities.KnowledgeBaseDocument.status == 'draft'
     ).all()
     
-    return documents
+    return [
+        {
+            "document_id": doc.document_id,
+            "title": doc.title,
+            "file_path": doc.file_path,
+            "category": doc.category,
+            "created_at": doc.created_at,
+            "updated_at": doc.updated_at,
+            "created_by": doc.created_by,
+            "status": doc.status,
+            "reviewed_by": doc.reviewed_by,
+            "reviewed_at": doc.reviewed_at,
+            "reject_reason": getattr(doc, 'reject_reason', None),
+            "target_audiences": getattr(doc, 'target_audiences', []),
+            "intent_id": doc.intent.intent_id if doc.intent else None,
+            "intent_name": doc.intent.intent_name if doc.intent else None
+        }
+        for doc in documents
+    ]
 
 
 @router.post("/documents/{document_id}/submit-review")

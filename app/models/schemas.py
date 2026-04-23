@@ -365,6 +365,8 @@ class KnowledgeBaseDocumentResponse(KnowledgeBaseDocumentBase):
     reviewed_at: Optional[date] = None
     reject_reason: Optional[str] = None
     target_audiences: Optional[List[str]] = []
+    intent_id: Optional[int] = None
+    intent_name: Optional[str] = None
 
     class Config:
         orm_mode = True
