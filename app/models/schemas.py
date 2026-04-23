@@ -13,7 +13,12 @@ class TokenData(BaseModel):
     email: Optional[str] = None
     user_id: Optional[int] = None
 
+class TargetAudienceSimple(BaseModel):
+    name: str
+    description: Optional[str] = None
 
+    class Config:
+        orm_mode = True
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str

@@ -320,11 +320,16 @@ class Intent(Base):
     created_at = Column(Date, default=datetime.now)
     created_by = Column(Integer, ForeignKey("Users.user_id"), nullable=True)
     is_deleted = Column(Boolean, default=False)
-    
+    target_audience = Column(String)
     faq_statistics = relationship('FaqStatistics', back_populates='intent', cascade="all, delete-orphan")
     training_questions = relationship('TrainingQuestionAnswer', back_populates='intent', cascade="all, delete-orphan")
     document = relationship('KnowledgeBaseDocument', back_populates='intent', cascade="all, delete-orphan")
+class TargetAudience(Base):
+    __tablename__ = "TargetAudience"
 
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
 class FaqStatistics(Base):
     __tablename__ = 'FaqStatistics'
     

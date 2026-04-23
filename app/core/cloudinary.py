@@ -3,13 +3,15 @@ import cloudinary
 import cloudinary.uploader
 from fastapi import UploadFile, HTTPException
 from app.core.config import settings
+
 # Cấu hình (Nên lấy từ biến môi trường .env)
-cloudinary.config( 
-  cloud_name = settings.CLOUDINARY_CLOUD_NAME, 
-  api_key = settings.CLOUDINARY_API_KEY, 
-  api_secret = settings.CLOUDINARY_API_SECRET,
-  secure = True
+cloudinary.config(
+    cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+    api_key=settings.CLOUDINARY_API_KEY,
+    api_secret=settings.CLOUDINARY_API_SECRET,
+    secure=True,
 )
+
 
 def upload_image_file(file: UploadFile) -> str:
     """
