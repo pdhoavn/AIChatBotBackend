@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+import time
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters  import RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient, models
@@ -48,7 +49,7 @@ class TrainingService:
             )
         except:
             pass
-            
+
         try:
             self.qdrant_client.create_collection(
                 collection_name=self.documents_collection,
@@ -56,6 +57,12 @@ class TrainingService:
             )
         except:
             pass
+
+    def _debug_log(self, message: str, trace_id: Optional[str] = None):
+        if trace_id:
+            print(f"[RAG][{trace_id}] {message}")
+            return
+        print(f"[RAG] {message}")
 
     def create_chat_session(self, user_id: int, session_type: str = "chatbot") -> int:
         """
@@ -1184,7 +1191,13 @@ class TrainingService:
     
     
 
-    def search_documents(self, query: str, top_k: int = 5):
+    def search_documents(
+        self,
+        query: str,
+        top_k: int = 5,
+        trace_id: Optional[str] = None,
+        stage: str = "document_search",
+    ):
         """
         Search documents (Fallback)
         
@@ -1201,6 +1214,11 @@ class TrainingService:
             List of document chunks
         """
         
+        start = time.perf_counter()
+        self._debug_log(
+            f"{stage}: start search_documents top_k={top_k} query_len={len(query or '')}",
+            trace_id
+        )
         try:
             query_embedding = self.embeddings.embed_query(query)
 
@@ -1210,14 +1228,49 @@ class TrainingService:
                 limit=top_k
             )
 
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            top_score = float(getattr(results[0], "score", 0.0)) if results else 0.0
+            top_payload = getattr(results[0], "payload", {}) if results else {}
+            top_document_id = (top_payload or {}).get("document_id")
+            self._debug_log(
+                f"{stage}: success results={len(results)} top_score={top_score:.6f} "
+                f"top_document_id={top_document_id} elapsed_ms={elapsed_ms}",
+                trace_id
+            )
             return results
         except Exception as e:
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            self._debug_log(
+                f"{stage}: search_documents error type={type(e).__name__} "
+                f"message={e} elapsed_ms={elapsed_ms}",
+                trace_id
+            )
             print(f"Qdrant search_documents timeout/error: {e}")
             return []
 
-    def extract_document_ids(self, results: List[Any]) -> List[int]:
+    def _fetch_document_names_by_id(self, document_ids: List[int]) -> Dict[int, str]:
         """
-        Extract and deduplicate document IDs from vector search results.
+        Fetch document display names from DB by document_id.
+        """
+        if not document_ids:
+            return {}
+
+        db = SessionLocal()
+        try:
+            rows = (
+                db.query(KnowledgeBaseDocument.document_id, KnowledgeBaseDocument.title)
+                .filter(KnowledgeBaseDocument.document_id.in_(document_ids))
+                .all()
+            )
+            return {int(row.document_id): row.title for row in rows}
+        except Exception:
+            return {}
+        finally:
+            db.close()
+
+    def extract_document_sources(self, results: List[Any]) -> List[Dict[str, Any]]:
+        """
+        Extract, dedupe, and enrich citation sources with document names.
         """
         document_ids: List[int] = []
         seen = set()
@@ -1237,7 +1290,14 @@ class TrainingService:
             seen.add(normalized_id)
             document_ids.append(normalized_id)
 
-        return document_ids
+        name_map = self._fetch_document_names_by_id(document_ids)
+        return [
+            {
+                "document_id": document_id,
+                "file_name": name_map.get(document_id),
+            }
+            for document_id in document_ids
+        ]
 
     def build_document_search_result(self, doc_results: List[Any]) -> Dict[str, Any]:
         """
@@ -1258,10 +1318,16 @@ class TrainingService:
             "confidence": confidence,
             "top_match": top_match,
             "intent_id": intent_id,
-            "sources": self.extract_document_ids(doc_results),
+            "sources": self.extract_document_sources(doc_results),
         }
     
-    def search_training_qa(self, query: str, top_k: int = 5):
+    def search_training_qa(
+        self,
+        query: str,
+        top_k: int = 5,
+        trace_id: Optional[str] = None,
+        stage: str = "training_qa_search",
+    ):
         """
         Search training Q&A (Priority 1)
         
@@ -1278,6 +1344,11 @@ class TrainingService:
             List of search results with scores
         """
         
+        start = time.perf_counter()
+        self._debug_log(
+            f"{stage}: start search_training_qa top_k={top_k} query_len={len(query or '')}",
+            trace_id
+        )
         try:
             query_embedding = self.embeddings.embed_query(query)
 
@@ -1287,11 +1358,26 @@ class TrainingService:
                 limit=top_k
             )
 
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            top_score = float(getattr(results[0], "score", 0.0)) if results else 0.0
+            top_payload = getattr(results[0], "payload", {}) if results else {}
+            top_question_id = (top_payload or {}).get("question_id")
+            self._debug_log(
+                f"{stage}: success results={len(results)} top_score={top_score:.6f} "
+                f"top_question_id={top_question_id} elapsed_ms={elapsed_ms}",
+                trace_id
+            )
             return results
         except Exception as e:
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            self._debug_log(
+                f"{stage}: search_training_qa error type={type(e).__name__} "
+                f"message={e} elapsed_ms={elapsed_ms}",
+                trace_id
+            )
             print(f"Qdrant search_training_qa timeout/error: {e}")
             return []
-    def hybrid_search(self, query: str):
+    def hybrid_search(self, query: str, trace_id: Optional[str] = None):
         """
         Hybrid RAG Search Strategy
         
@@ -1325,13 +1411,29 @@ class TrainingService:
         """
         
         # STEP 1: Search training Q&A
-        qa_results = self.search_training_qa(query, top_k=3)
+        self._debug_log(
+            f"hybrid_search: start query_len={len(query or '')}",
+            trace_id
+        )
+        qa_results = self.search_training_qa(
+            query,
+            top_k=3,
+            trace_id=trace_id,
+            stage="hybrid_training_qa_search",
+        )
         if qa_results:
             print("qa result " + qa_results[0].payload.get("answer_text"))
             print(f"score: + {qa_results[0].score}")
+            self._debug_log(
+                f"hybrid_search: qa_results={len(qa_results)} top_score={qa_results[0].score:.6f}",
+                trace_id
+            )
+        else:
+            self._debug_log("hybrid_search: qa_results=0", trace_id)
         # TIER 1: Perfect match (score > 0.7)
         if qa_results and qa_results[0].score > 0.5:
             top_match = qa_results[0]
+            self._debug_log("hybrid_search: tier=training_qa", trace_id)
             return {
                 "response_official_answer": top_match.payload.get("answer_text"),
                 "response_source": "training_qa",
@@ -1344,8 +1446,19 @@ class TrainingService:
         
         
         # TIER 2: No training Q&A match, try documents
-        doc_results = self.search_documents(query, top_k=5)
-        return self.build_document_search_result(doc_results)
+        doc_results = self.search_documents(
+            query,
+            top_k=5,
+            trace_id=trace_id,
+            stage="hybrid_tier2_document_search",
+        )
+        result = self.build_document_search_result(doc_results)
+        self._debug_log(
+            f"hybrid_search: tier=document confidence={result.get('confidence', 0.0):.6f} "
+            f"sources={len(result.get('sources', []))}",
+            trace_id
+        )
+        return result
         
     def _get_user_personality_and_academics(self, user_id: int, db: Session) -> Dict[str, Any]:
         out = {
