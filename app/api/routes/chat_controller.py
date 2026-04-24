@@ -72,9 +72,10 @@ async def websocket_chat(websocket: WebSocket):
                 continue
             tier_source = result.get("response_source")
             confidence = result.get("confidence", 0.0)
-
+            print(f"👉 tier_source: {tier_source}")
+            print(f"👉 confidence: {confidence}")
             # === TIER 1: training_qa - score > 0.8 ===
-            if tier_source == "training_qa" and confidence > 0.7:
+            if tier_source == "training_qa" and confidence > 0.5:
                 print("floor 1")
                 top = result["top_match"]
                 q_text = top.payload.get("question_text")
