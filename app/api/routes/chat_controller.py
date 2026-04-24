@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
 import asyncio
 import json
+import time
+import uuid
 from app.models.database import SessionLocal
 from app.services import training_service
 from app.services.training_service import TrainingService
@@ -9,6 +11,13 @@ from app.services.training_service import TrainingService
 router = APIRouter()
 # Tạo 1 instance dùng chung
 service = TrainingService()
+
+def _chat_log(message: str, trace_id: str = ""):
+    if trace_id:
+        print(f"[CHAT][{trace_id}] {message}")
+        return
+    print(f"[CHAT] {message}")
+
 #thêm 3 tầng check chat
 @router.websocket("/ws/chat")
 async def websocket_chat(websocket: WebSocket):
@@ -46,13 +55,21 @@ async def websocket_chat(websocket: WebSocket):
             print(f"audience_id : {audience_id}, intent_id: {intent_id_from_client}")
             if not message:
                 continue
+            trace_id = uuid.uuid4().hex[:8]
+            request_start = time.perf_counter()
+            _chat_log(
+                f"incoming_message session_id={session_id} user_id={user_id} message_len={len(message)}",
+                trace_id
+            )
 
              # enrich_query — tạo truy vấn "đầy đủ" dựa vào hội thoại cũ
             enriched_query = await service.enrich_query(session_id, message)
             print(f"👉 enriched_query: {enriched_query}")
+            _chat_log(f"enriched_query={enriched_query}", trace_id)
 
              # Nếu enrich_query rỗng, nghĩa là user nói lan man → không cần RAG
             if not enriched_query:
+                _chat_log("skip_rag: empty_enriched_query", trace_id)
                 await websocket.send_json({
                     "event": "chunk",
                     "content": "Mình chưa rõ ý bạn lắm, bạn có thể nói rõ hơn được không?"
@@ -66,9 +83,15 @@ async def websocket_chat(websocket: WebSocket):
            
             # Hybrid search (cả training QA và document)
             try:
-                result = service.hybrid_search(audience_id, enriched_query, intent_id_from_client)
+
+                hybrid_start = time.perf_counter()
+                result = service.hybrid_search(audience_id, enriched_query, intent_id_from_client, trace_id=trace_id)
+                hybrid_elapsed_ms = int((time.perf_counter() - hybrid_start) * 1000)
+                _chat_log(f"hybrid_search_done elapsed_ms={hybrid_elapsed_ms}", trace_id)
+
             except Exception as e:
                 print(f"Hybrid search error: {e}")
+                _chat_log(f"hybrid_search_error type={type(e).__name__} message={e}", trace_id)
                 await websocket.send_json({
                     "event": "chunk",
                     "content": "Hệ thống đang bận hoặc kho dữ liệu tạm thời không phản hồi. Bạn thử lại sau ít phút nhé."
@@ -79,6 +102,11 @@ async def websocket_chat(websocket: WebSocket):
             confidence = result.get("confidence", 0.0)
             print(f"👉 tier_source: {tier_source}")
             print(f"👉 confidence: {confidence}")
+            _chat_log(
+                f"tier_source={tier_source} confidence={confidence:.6f} "
+                f"sources={result.get('sources', [])}",
+                trace_id
+            )
             # === TIER 1: training_qa - score > 0.8 ===
             if tier_source == "training_qa" and confidence > 0.5:
                 print("floor 1")
@@ -87,6 +115,7 @@ async def websocket_chat(websocket: WebSocket):
                 a_text = top.payload.get("answer_text")
                 intent_id = top.payload.get("intent_id")
                 relevance_ok = await service.llm_relevance_check(enriched_query, q_text, a_text)
+                _chat_log(f"training_qa_relevance={relevance_ok}", trace_id)
 
                 if relevance_ok:
                     print("floor 1: training QA valid")
@@ -100,24 +129,50 @@ async def websocket_chat(websocket: WebSocket):
                         "sources": [],
                         "confidence": confidence
                     })
+                    total_elapsed_ms = int((time.perf_counter() - request_start) * 1000)
+                    _chat_log(f"done tier=training_qa confidence={confidence:.6f} elapsed_ms={total_elapsed_ms}", trace_id)
                     continue
                 else:
                     print("QA not relevant → fallback xuống document")
                     # Chạy document search lại
-                    doc_results = service.search_documents(enriched_query, top_k=5)
+                    doc_results = service.search_documents(
+                        enriched_query,
+                        top_k=5,
+                        trace_id=trace_id,
+                        stage="qa_fallback_document_search",
+                    )
                     result = service.build_document_search_result(doc_results)
                     confidence = result.get("confidence", 0.0)
                     tier_source = "document"
+                    _chat_log(
+                        f"qa_fallback_result confidence={confidence:.6f} sources={result.get('sources', [])}",
+                        trace_id
+                    )
                     
             context_chunks = result["response"]
             intent_id = result["intent_id"]
             context = "\n\n".join([
                 r.payload.get("chunk_text", "") for r in context_chunks
             ])
+            _chat_log(
+                f"context_precheck chunks={len(context_chunks)} chars={len(context)} intent_id={intent_id}",
+                trace_id
+            )
             
+            tier_check_start = time.perf_counter()
             tier_source = await service.llm_document_recommendation_check(enriched_query, context)
+            tier_check_elapsed_ms = int((time.perf_counter() - tier_check_start) * 1000)
+            _chat_log(
+                f"llm_document_recommendation_check result={tier_source} elapsed_ms={tier_check_elapsed_ms}",
+                trace_id
+            )
             if(tier_source == "document"):
-                doc_results = service.search_documents(enriched_query, top_k=5)
+                doc_results = service.search_documents(
+                    enriched_query,
+                    top_k=5,
+                    trace_id=trace_id,
+                    stage="document_recheck_search",
+                )
                 result = service.build_document_search_result(doc_results)
                 confidence = result.get("confidence", 0.0)
                 context_chunks = result["response"]
@@ -125,6 +180,11 @@ async def websocket_chat(websocket: WebSocket):
                 context = "\n\n".join([
                     r.payload.get("chunk_text", "") for r in context_chunks
                 ])
+                _chat_log(
+                    f"document_recheck_result confidence={confidence:.6f} "
+                    f"chunks={len(context_chunks)} chars={len(context)} sources={result.get('sources', [])}",
+                    trace_id
+                )
                 print("Context:" + context)
                 print("Confidence of document:")
                 print(confidence)
@@ -132,24 +192,56 @@ async def websocket_chat(websocket: WebSocket):
             # === TIER 2: document-only (no QA match) ===
             if tier_source == "document" and confidence >= 0.5:
                 print("🔍 floor 3: using document context")
-                
+                answer_text = ""
                 async for chunk in service.stream_response_from_context(
                     enriched_query, context, session_id, user_id, intent_id, message
                 ):
+                    piece = getattr(chunk, "content", str(chunk))
+                    answer_text += piece
                     await websocket.send_text(json.dumps({
                         "event": "chunk",
-                        "content": getattr(chunk, "content", str(chunk))
+                        "content": piece
                     }))
                     # Gửi tín hiệu kết thúc khi hoàn tất
                 try:
+                    allowed_sources = result.get("sources", [])
+                    if service.is_insufficient_answer(answer_text):
+                        filtered_sources = []
+                        _chat_log(
+                            "citation_guard skipped: insufficient_answer -> sources=[]",
+                            trace_id
+                        )
+                    else:
+                        used_doc_ids = await service.infer_used_document_ids(
+                            query=enriched_query,
+                            answer_text=answer_text,
+                            context_chunks=context_chunks,
+                            allowed_sources=allowed_sources,
+                            trace_id=trace_id,
+                        )
+                        filtered_sources = [
+                            src for src in allowed_sources
+                            if src.get("document_id") in used_doc_ids
+                        ]
+                        _chat_log(
+                            f"citation_guard used_doc_ids={used_doc_ids} filtered_sources={filtered_sources}",
+                            trace_id
+                        )
                     await websocket.send_json({
                         "event": "done",
-                        "sources": result.get("sources", []),
+                        "sources": filtered_sources,
                         "confidence": confidence
                     })
+                    total_elapsed_ms = int((time.perf_counter() - request_start) * 1000)
+                    _chat_log(
+                        f"done tier=document confidence={confidence:.6f} "
+                        f"sources={filtered_sources} elapsed_ms={total_elapsed_ms}",
+                        trace_id
+                    )
                     continue
                 except Exception:
                     print("Không thể gửi event done vì client đã ngắt.")
+                    _chat_log("send_done_failed: client_disconnected", trace_id)
                     break
                 # === TIER 3: recommedation ===
             elif tier_source == "recommendation":
@@ -166,12 +258,18 @@ async def websocket_chat(websocket: WebSocket):
                 try:
                     await websocket.send_json({
                         "event": "done",
-                        "sources": result.get("sources", []),
+                        "sources": [],
                         "confidence": confidence
                     })
+                    total_elapsed_ms = int((time.perf_counter() - request_start) * 1000)
+                    _chat_log(
+                        f"done tier=recommendation confidence={confidence:.6f} sources=[] elapsed_ms={total_elapsed_ms}",
+                        trace_id
+                    )
                     continue
                 except Exception:
                     print("Không thể gửi event done vì client đã ngắt.")
+                    _chat_log("send_done_failed: client_disconnected", trace_id)
                     break
 
             elif tier_source == "document" or tier_source == "nope":
@@ -187,12 +285,19 @@ async def websocket_chat(websocket: WebSocket):
                 try:
                     await websocket.send_json({
                         "event": "done",
-                        "sources": result.get("sources", []),
+                        "sources": [],
                         "confidence": confidence
                     })
+                    total_elapsed_ms = int((time.perf_counter() - request_start) * 1000)
+                    _chat_log(
+                        f"done tier=nope confidence={confidence:.6f} "
+                        f"sources=[] elapsed_ms={total_elapsed_ms}",
+                        trace_id
+                    )
                     continue
                 except Exception:
                     print("Không thể gửi event done vì client đã ngắt.")
+                    _chat_log("send_done_failed: client_disconnected", trace_id)
                     break
                 
                 
