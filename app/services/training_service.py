@@ -9,7 +9,7 @@ import uuid
 import asyncio
 from sqlalchemy.orm import Session
 from app.models import schemas
-from app.models.entities import AcademicScore, ChatInteraction, ChatSession, DocumentChunk, FaqStatistics, KnowledgeBaseDocument, Major, ParticipateChatSession, RiasecResult, TrainingQuestionAnswer
+from app.models.entities import AcademicScore, ChatInteraction, ChatSession, DocumentChunk, FaqStatistics, Intent, KnowledgeBaseDocument, Major, ParticipateChatSession, RiasecResult, TargetAudience, TrainingQuestionAnswer
 from app.models.database import SessionLocal
 from sqlalchemy.exc import SQLAlchemyError
 from app.services.memory_service import MemoryManager
@@ -889,7 +889,16 @@ class TrainingService:
 
         if qa.status != "draft":
             raise Exception("Only draft QA can be approved")
-
+        
+        intent = db.query(Intent).filter_by(intent_id=qa.intent_id).first()
+        audience_names = qa.target_audiences or []
+        audiences = db.query(TargetAudience).filter(
+        TargetAudience.name.in_(audience_names)
+        ).all()
+        if not audiences:
+            raise Exception("No valid audiences found")
+        audience_ids = [a.id for a in audiences]
+        audience_names = [a.name for a in audiences]
         # embed question (answer không embed)
         embedding = self.embeddings.embed_query(qa.question)
         point_id = str(uuid.uuid4())
@@ -904,6 +913,10 @@ class TrainingService:
                     payload={
                         "question_id": qa.question_id,
                         "intent_id": qa.intent_id,
+                        
+                        #MULTI AUDIENCE
+                        "audience_ids": audience_ids,
+                        "audience_names": audience_names,
                         "question_text": qa.question,
                         "answer_text": qa.answer,
                         "type": "training_qa"
@@ -973,7 +986,21 @@ class TrainingService:
 
         if doc.status != "draft":
             raise Exception("Only draft documents can be approved")
+        audience_names_input = doc.target_audiences or []
 
+        audiences = db.query(TargetAudience).filter(
+            TargetAudience.name.in_(audience_names_input)
+        ).all()
+
+        if not audiences:
+            raise Exception("No valid audiences found")
+
+        audience_ids = [a.id for a in audiences]
+        audience_names = [a.name for a in audiences]
+        missing = set(audience_names_input) - set(audience_names)
+        if missing:
+            raise Exception(f"Audience not found: {missing}")
+        
         abs_path = os.path.abspath(doc.file_path)
         print("OPEN FILE:", abs_path)
 
@@ -1033,6 +1060,9 @@ class TrainingService:
                             "document_id": document_id,
                             "chunk_index": i,
                             "chunk_text": chunk,
+                            # multi audience
+                            "audience_ids": audience_ids,
+                            "audience_names": audience_names,
                             "intent_id": intent_id,
                             "metadata": metadata or {},
                             "type": "document"
@@ -1184,7 +1214,7 @@ class TrainingService:
     
     
 
-    def search_documents(self, query: str, top_k: int = 5):
+    def search_documents(self, query: str, audience_id: int, intent_id: int = None, top_k: int = 5):
         """
         Search documents (Fallback)
         
@@ -1200,14 +1230,27 @@ class TrainingService:
         Returns:
             List of document chunks
         """
-        
+        must_conditions = [
+            {
+                "key": "audience_id",
+                "match": {"value": audience_id}
+            }
+        ]
+        if intent_id:
+            must_conditions.append({
+                "key": "intent_id",
+                "match": {"value": intent_id}
+            })
         try:
             query_embedding = self.embeddings.embed_query(query)
 
             results = self.qdrant_client.search(
                 collection_name=self.documents_collection,
                 query_vector=query_embedding,
-                limit=top_k
+                limit=top_k,
+                query_filter={
+                    "must": must_conditions
+                }
             )
 
             return results
@@ -1215,7 +1258,7 @@ class TrainingService:
             print(f"Qdrant search_documents timeout/error: {e}")
             return []
     
-    def search_training_qa(self, query: str, top_k: int = 5):
+    def search_training_qa(self, query: str, audience_id: int, intent_id: int = None, top_k: int = 5):
         """
         Search training Q&A (Priority 1)
         
@@ -1231,21 +1274,34 @@ class TrainingService:
         Returns:
             List of search results with scores
         """
-        
+        must_conditions = [
+            {
+                "key": "audience_id",
+                "match": {"value": audience_id}
+            }
+        ]
+        if intent_id:
+            must_conditions.append({
+                "key": "intent_id",
+                "match": {"value": intent_id}
+            })
         try:
             query_embedding = self.embeddings.embed_query(query)
 
             results = self.qdrant_client.search(
                 collection_name=self.training_qa_collection,
                 query_vector=query_embedding,
-                limit=top_k
+                limit=top_k,
+                query_filter={
+                    "must": must_conditions
+                }
             )
 
             return results
         except Exception as e:
             print(f"Qdrant search_training_qa timeout/error: {e}")
             return []
-    def hybrid_search(self, query: str):
+    def hybrid_search(self, audience_id: int, query: str, intent_id: int = None):
         """
         Hybrid RAG Search Strategy
         
@@ -1279,7 +1335,7 @@ class TrainingService:
         """
         
         # STEP 1: Search training Q&A
-        qa_results = self.search_training_qa(query, top_k=3)
+        qa_results = self.search_training_qa(query, audience_id, intent_id, top_k=3)
         print("qa result " + qa_results[0].payload.get("answer_text"))
         print(f"score: + {qa_results[0].score}")
         # TIER 1: Perfect match (score > 0.7)
@@ -1297,7 +1353,7 @@ class TrainingService:
         
         
         # TIER 2: No training Q&A match, try documents
-        doc_results = self.search_documents(query, top_k=5)
+        doc_results = self.search_documents(query, audience_id, top_k=5)
         if doc_results and len(doc_results) > 0: 
             return {
                     "response": doc_results,
