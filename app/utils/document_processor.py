@@ -113,7 +113,7 @@ class DocumentProcessor:
         except Exception as e:
             raise Exception(f"Failed to extract PDF: {str(e)}")
         
-        return text if text else "Unable to extract text from PDF"
+        return text if text else ""
     
     @staticmethod
     def extract_text_from_docx(file_content: bytes) -> str:
