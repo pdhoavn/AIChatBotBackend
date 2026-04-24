@@ -185,25 +185,50 @@ async def websocket_chat(websocket: WebSocket):
             # === TIER 2: document-only (no QA match) ===
             if tier_source == "document" and confidence >= 0.5:
                 print("🔍 floor 3: using document context")
-                
+                answer_text = ""
                 async for chunk in service.stream_response_from_context(
                     enriched_query, context, session_id, user_id, intent_id, message
                 ):
+                    piece = getattr(chunk, "content", str(chunk))
+                    answer_text += piece
                     await websocket.send_text(json.dumps({
                         "event": "chunk",
-                        "content": getattr(chunk, "content", str(chunk))
+                        "content": piece
                     }))
                     # Gửi tín hiệu kết thúc khi hoàn tất
                 try:
+                    allowed_sources = result.get("sources", [])
+                    if service.is_insufficient_answer(answer_text):
+                        filtered_sources = []
+                        _chat_log(
+                            "citation_guard skipped: insufficient_answer -> sources=[]",
+                            trace_id
+                        )
+                    else:
+                        used_doc_ids = await service.infer_used_document_ids(
+                            query=enriched_query,
+                            answer_text=answer_text,
+                            context_chunks=context_chunks,
+                            allowed_sources=allowed_sources,
+                            trace_id=trace_id,
+                        )
+                        filtered_sources = [
+                            src for src in allowed_sources
+                            if src.get("document_id") in used_doc_ids
+                        ]
+                        _chat_log(
+                            f"citation_guard used_doc_ids={used_doc_ids} filtered_sources={filtered_sources}",
+                            trace_id
+                        )
                     await websocket.send_json({
                         "event": "done",
-                        "sources": result.get("sources", []),
+                        "sources": filtered_sources,
                         "confidence": confidence
                     })
                     total_elapsed_ms = int((time.perf_counter() - request_start) * 1000)
                     _chat_log(
                         f"done tier=document confidence={confidence:.6f} "
-                        f"sources={result.get('sources', [])} elapsed_ms={total_elapsed_ms}",
+                        f"sources={filtered_sources} elapsed_ms={total_elapsed_ms}",
                         trace_id
                     )
                     continue
@@ -226,12 +251,12 @@ async def websocket_chat(websocket: WebSocket):
                 try:
                     await websocket.send_json({
                         "event": "done",
-                        "sources": result.get("sources", []),
+                        "sources": [],
                         "confidence": confidence
                     })
                     total_elapsed_ms = int((time.perf_counter() - request_start) * 1000)
                     _chat_log(
-                        f"done tier=recommendation confidence={confidence:.6f} elapsed_ms={total_elapsed_ms}",
+                        f"done tier=recommendation confidence={confidence:.6f} sources=[] elapsed_ms={total_elapsed_ms}",
                         trace_id
                     )
                     continue
@@ -253,13 +278,13 @@ async def websocket_chat(websocket: WebSocket):
                 try:
                     await websocket.send_json({
                         "event": "done",
-                        "sources": result.get("sources", []),
+                        "sources": [],
                         "confidence": confidence
                     })
                     total_elapsed_ms = int((time.perf_counter() - request_start) * 1000)
                     _chat_log(
                         f"done tier=nope confidence={confidence:.6f} "
-                        f"sources={result.get('sources', [])} elapsed_ms={total_elapsed_ms}",
+                        f"sources=[] elapsed_ms={total_elapsed_ms}",
                         trace_id
                     )
                     continue

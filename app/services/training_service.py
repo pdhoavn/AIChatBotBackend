@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 import time
+import json
+import re
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters  import RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient, models
@@ -1320,6 +1322,119 @@ class TrainingService:
             "intent_id": intent_id,
             "sources": self.extract_document_sources(doc_results),
         }
+
+    async def infer_used_document_ids(
+        self,
+        query: str,
+        answer_text: str,
+        context_chunks: List[Any],
+        allowed_sources: List[Dict[str, Any]],
+        trace_id: Optional[str] = None,
+    ) -> List[int]:
+        """
+        Ask LLM to identify which retrieved document IDs were actually used in the answer.
+        Final output is always constrained to allowed source IDs (anti-hallucination guard).
+        """
+        allowed_ids = []
+        for src in allowed_sources or []:
+            try:
+                doc_id = int(src.get("document_id"))
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if doc_id not in allowed_ids:
+                allowed_ids.append(doc_id)
+
+        if not allowed_ids:
+            return []
+
+        snippet_lines = []
+        for idx, chunk in enumerate(context_chunks[:12], start=1):
+            payload = getattr(chunk, "payload", {}) or {}
+            raw_doc_id = payload.get("document_id")
+            try:
+                doc_id = int(raw_doc_id)
+            except (TypeError, ValueError):
+                continue
+            if doc_id not in allowed_ids:
+                continue
+            chunk_text = (payload.get("chunk_text") or "").strip().replace("\n", " ")
+            snippet_lines.append(f"{idx}. [DOC_ID={doc_id}] {chunk_text[:500]}")
+
+        context_for_citation = "\n".join(snippet_lines)
+        prompt = f"""
+Bạn là bộ máy trích dẫn nguồn.
+Nhiệm vụ: xác định tài liệu nào THỰC SỰ được dùng để tạo câu trả lời.
+
+Allowed document IDs: {allowed_ids}
+Question: {query}
+Answer: {answer_text}
+
+Retrieved context snippets:
+{context_for_citation}
+
+Yêu cầu:
+- Chỉ chọn ID nằm trong allowed IDs.
+- Nếu không đủ bằng chứng thì trả [].
+- Trả về DUY NHẤT JSON array số nguyên, ví dụ: [58, 60] hoặc [].
+"""
+
+        try:
+            res = await self.llm.ainvoke(prompt)
+            raw = (res.content or "").strip()
+            parsed_ids: List[int] = []
+            try:
+                obj = json.loads(raw)
+                if isinstance(obj, list):
+                    for x in obj:
+                        try:
+                            parsed_ids.append(int(x))
+                        except (TypeError, ValueError):
+                            continue
+            except Exception:
+                parsed_ids = [int(x) for x in re.findall(r"\d+", raw)]
+
+            allowed_set = set(allowed_ids)
+            final_ids = []
+            for doc_id in parsed_ids:
+                if doc_id in allowed_set and doc_id not in final_ids:
+                    final_ids.append(doc_id)
+
+            self._debug_log(
+                f"citation_guard: allowed={allowed_ids} raw='{raw}' final={final_ids}",
+                trace_id
+            )
+            return final_ids
+        except Exception as e:
+            self._debug_log(
+                f"citation_guard: error type={type(e).__name__} message={e}",
+                trace_id
+            )
+            return []
+
+    def is_insufficient_answer(self, answer_text: str) -> bool:
+        """
+        Detect generic "insufficient information" answers.
+        If true, citations should be hidden to avoid misleading evidence.
+        """
+        text = (answer_text or "").strip().lower()
+        if not text:
+            return True
+
+        markers = [
+            "không đủ thông tin",
+            "không có đủ thông tin",
+            "chưa đủ thông tin",
+            "không có thông tin",
+            "chưa có thông tin",
+            "không tìm thấy thông tin",
+            "không có dữ liệu",
+            "chưa có dữ liệu",
+            "không thể xác định",
+            "không thể trả lời",
+            "không thể cung cấp",
+            "không rõ",
+        ]
+        return any(marker in text for marker in markers)
     
     def search_training_qa(
         self,
