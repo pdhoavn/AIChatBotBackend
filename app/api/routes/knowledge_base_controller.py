@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, APIRouter, Form, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from pathlib import Path
@@ -177,6 +177,15 @@ async def upload_document(
         )
         print(f"[6] Extract XONG. Kết quả text dài: {len(extracted_text) if extracted_text else 0}", flush=True)
         if not extracted_text:
+            # Check if PDF is a scanned image
+            if file.content_type == 'application/pdf' or Path(file.filename).suffix.lower() == '.pdf':
+                return JSONResponse(
+                    status_code=422,
+                    content={
+                        "status": "SCANNED_PDF",
+                        "detail": "File PDF chứa ảnh scan, không thể trích xuất nội dung. Vui lòng upload file PDF có nội dung văn bản."
+                    }
+                )
             raise HTTPException(
                 status_code=422,
                 detail="Cannot extract content from the file"
