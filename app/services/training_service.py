@@ -1214,6 +1214,52 @@ class TrainingService:
         except Exception as e:
             print(f"Qdrant search_documents timeout/error: {e}")
             return []
+
+    def extract_document_ids(self, results: List[Any]) -> List[int]:
+        """
+        Extract and deduplicate document IDs from vector search results.
+        """
+        document_ids: List[int] = []
+        seen = set()
+
+        for result in results or []:
+            payload = getattr(result, "payload", {}) or {}
+            document_id = payload.get("document_id")
+            if document_id is None:
+                continue
+            try:
+                normalized_id = int(document_id)
+            except (TypeError, ValueError):
+                continue
+
+            if normalized_id in seen:
+                continue
+            seen.add(normalized_id)
+            document_ids.append(normalized_id)
+
+        return document_ids
+
+    def build_document_search_result(self, doc_results: List[Any]) -> Dict[str, Any]:
+        """
+        Build a stable document-search response object used by chat pipelines.
+        """
+        top_match = doc_results[0] if doc_results else None
+        intent_id = 0
+        confidence = 0.0
+
+        if top_match is not None:
+            payload = getattr(top_match, "payload", {}) or {}
+            intent_id = payload.get("intent_id") or 0
+            confidence = float(getattr(top_match, "score", 0.0) or 0.0)
+
+        return {
+            "response": doc_results,
+            "response_source": "document",
+            "confidence": confidence,
+            "top_match": top_match,
+            "intent_id": intent_id,
+            "sources": self.extract_document_ids(doc_results),
+        }
     
     def search_training_qa(self, query: str, top_k: int = 5):
         """
@@ -1280,8 +1326,9 @@ class TrainingService:
         
         # STEP 1: Search training Q&A
         qa_results = self.search_training_qa(query, top_k=3)
-        print("qa result " + qa_results[0].payload.get("answer_text"))
-        print(f"score: + {qa_results[0].score}")
+        if qa_results:
+            print("qa result " + qa_results[0].payload.get("answer_text"))
+            print(f"score: + {qa_results[0].score}")
         # TIER 1: Perfect match (score > 0.7)
         if qa_results and qa_results[0].score > 0.5:
             top_match = qa_results[0]
@@ -1298,24 +1345,7 @@ class TrainingService:
         
         # TIER 2: No training Q&A match, try documents
         doc_results = self.search_documents(query, top_k=5)
-        if doc_results and len(doc_results) > 0: 
-            return {
-                    "response": doc_results,
-                    "response_source": "document",
-                    "confidence": doc_results[0].score,
-                    "top_match": doc_results[0],
-                    "intent_id": doc_results[0].payload.get("intent_id"),
-                    "sources": [r.payload.get("document_id") for r in doc_results]
-                }
-        else:
-            return {
-                "response": doc_results,
-                "response_source": "document",
-                "confidence": 0.0,
-                "top_match": None,
-                "intent_id": 0,
-                "sources": []
-            }
+        return self.build_document_search_result(doc_results)
         
     def _get_user_personality_and_academics(self, user_id: int, db: Session) -> Dict[str, Any]:
         out = {
