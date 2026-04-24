@@ -92,7 +92,7 @@ async def websocket_chat(websocket: WebSocket):
                         }))
                     await websocket.send_json({
                         "event": "done",
-                        "sources": [q_text],
+                        "sources": [],
                         "confidence": confidence
                     })
                     continue
@@ -100,13 +100,8 @@ async def websocket_chat(websocket: WebSocket):
                     print("QA not relevant → fallback xuống document")
                     # Chạy document search lại
                     doc_results = service.search_documents(enriched_query, top_k=5)
-                    result = {
-                        "response": doc_results,
-                        "intent_id": doc_results[0].payload.get("intent_id"),
-                        "response_source": "document",
-                        "confidence": doc_results[0].score if doc_results else 0.0,
-                        "sources": [r.payload.get("document_id") for r in doc_results]
-                    }
+                    result = service.build_document_search_result(doc_results)
+                    confidence = result.get("confidence", 0.0)
                     tier_source = "document"
                     
             context_chunks = result["response"]
@@ -118,14 +113,13 @@ async def websocket_chat(websocket: WebSocket):
             tier_source = await service.llm_document_recommendation_check(enriched_query, context)
             if(tier_source == "document"):
                 doc_results = service.search_documents(enriched_query, top_k=5)
-                result = {
-                    "response": doc_results,
-                    "intent_id": doc_results[0].payload.get("intent_id"),
-                    "response_source": "document",
-                    "confidence": doc_results[0].score if doc_results else 0.0,
-                    "sources": [r.payload.get("document_id") for r in doc_results]
-                }
-                confidence = doc_results[0].score if doc_results else 0.0
+                result = service.build_document_search_result(doc_results)
+                confidence = result.get("confidence", 0.0)
+                context_chunks = result["response"]
+                intent_id = result["intent_id"]
+                context = "\n\n".join([
+                    r.payload.get("chunk_text", "") for r in context_chunks
+                ])
                 print("Context:" + context)
                 print("Confidence of document:")
                 print(confidence)
