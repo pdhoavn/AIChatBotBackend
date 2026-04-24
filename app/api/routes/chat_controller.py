@@ -20,9 +20,11 @@ async def websocket_chat(websocket: WebSocket):
     
     # 1️⃣ Nhận thông tin user và session trước
     data = await websocket.receive_json()
+    
     user_id = data.get("user_id")
     session_id = data.get("session_id")
-   
+    
+    
     
 
     if not session_id:
@@ -33,12 +35,15 @@ async def websocket_chat(websocket: WebSocket):
         })
 
     await websocket.send_json({"event": "go", "sources": [], "confidence": 1.0})
- 
+    
     try:
         while True:
             # Nhận tin nhắn từ client
             raw_data = await websocket.receive_json()
             message = raw_data.get("message", "").strip()
+            audience_id = raw_data.get("audience_id")
+            intent_id_from_client = raw_data.get("intent_id")
+            print(f"audience_id : {audience_id}, intent_id: {intent_id_from_client}")
             if not message:
                 continue
 
@@ -61,7 +66,7 @@ async def websocket_chat(websocket: WebSocket):
            
             # Hybrid search (cả training QA và document)
             try:
-                result = service.hybrid_search(enriched_query)
+                result = service.hybrid_search(audience_id, enriched_query, intent_id_from_client)
             except Exception as e:
                 print(f"Hybrid search error: {e}")
                 await websocket.send_json({
@@ -92,7 +97,7 @@ async def websocket_chat(websocket: WebSocket):
                         }))
                     await websocket.send_json({
                         "event": "done",
-                        "sources": [q_text],
+                        "sources": [],
                         "confidence": confidence
                     })
                     continue
@@ -100,13 +105,8 @@ async def websocket_chat(websocket: WebSocket):
                     print("QA not relevant → fallback xuống document")
                     # Chạy document search lại
                     doc_results = service.search_documents(enriched_query, top_k=5)
-                    result = {
-                        "response": doc_results,
-                        "intent_id": doc_results[0].payload.get("intent_id"),
-                        "response_source": "document",
-                        "confidence": doc_results[0].score if doc_results else 0.0,
-                        "sources": [r.payload.get("document_id") for r in doc_results]
-                    }
+                    result = service.build_document_search_result(doc_results)
+                    confidence = result.get("confidence", 0.0)
                     tier_source = "document"
                     
             context_chunks = result["response"]
@@ -118,14 +118,13 @@ async def websocket_chat(websocket: WebSocket):
             tier_source = await service.llm_document_recommendation_check(enriched_query, context)
             if(tier_source == "document"):
                 doc_results = service.search_documents(enriched_query, top_k=5)
-                result = {
-                    "response": doc_results,
-                    "intent_id": doc_results[0].payload.get("intent_id"),
-                    "response_source": "document",
-                    "confidence": doc_results[0].score if doc_results else 0.0,
-                    "sources": [r.payload.get("document_id") for r in doc_results]
-                }
-                confidence = doc_results[0].score if doc_results else 0.0
+                result = service.build_document_search_result(doc_results)
+                confidence = result.get("confidence", 0.0)
+                context_chunks = result["response"]
+                intent_id = result["intent_id"]
+                context = "\n\n".join([
+                    r.payload.get("chunk_text", "") for r in context_chunks
+                ])
                 print("Context:" + context)
                 print("Confidence of document:")
                 print(confidence)

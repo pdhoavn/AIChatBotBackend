@@ -17,6 +17,17 @@ from app.core.security import get_current_user, has_permission
 
 router = APIRouter()
 
+MEDIA_TYPE_MAPPING = {
+    '.pdf': 'application/pdf',
+    '.txt': 'text/plain',
+    '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif'
+}
+
 def check_view_permission(current_user: entities.Users = Depends(get_current_user)):
     """Check if user has permission to view training questions (Admin, Consultant, or Admission Official)"""
     if not current_user:
@@ -90,6 +101,15 @@ def check_file_exists(file_path: str) -> Path:
             status_code=404, 
             detail=f"File not found on server. Looking for: {resolved_path}"
         )
+    return resolved_path
+
+def check_file_exists_public(file_path: str) -> Path:
+    """
+    Public-safe variant that avoids leaking absolute server paths.
+    """
+    resolved_path = resolve_file_path(file_path)
+    if not resolved_path.exists():
+        raise HTTPException(status_code=404, detail="Document file not found")
     return resolved_path
 
 @router.post("/upload/training_question")
@@ -356,21 +376,37 @@ def view_document(
     
     # Determine media type based on file extension
     file_extension = Path(document.file_path).suffix.lower()
-    media_type_mapping = {
-        '.pdf': 'application/pdf',
-        '.txt': 'text/plain',
-        '.doc': 'application/msword',
-        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.png': 'image/png',
-        '.gif': 'image/gif'
-    }
-    
-    media_type = media_type_mapping.get(file_extension, 'application/octet-stream')
+    media_type = MEDIA_TYPE_MAPPING.get(file_extension, 'application/octet-stream')
     
     return FileResponse(
         path=document.file_path,
+        media_type=media_type,
+        headers={"Content-Disposition": "inline"}
+    )
+
+@router.get("/documents/{document_id}/public-view")
+def public_view_document(
+    document_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Public, read-only document view endpoint.
+    Security constraints:
+    - No authentication required
+    - Only approved documents are visible
+    - Inline response only (no metadata disclosure)
+    """
+    document = get_document_or_404(document_id, db)
+
+    if document.status != "approved":
+        raise HTTPException(status_code=404, detail="Document not available")
+
+    resolved_path = check_file_exists_public(document.file_path)
+    file_extension = resolved_path.suffix.lower()
+    media_type = MEDIA_TYPE_MAPPING.get(file_extension, 'application/octet-stream')
+
+    return FileResponse(
+        path=str(resolved_path),
         media_type=media_type,
         headers={"Content-Disposition": "inline"}
     )
