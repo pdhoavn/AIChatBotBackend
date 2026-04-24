@@ -3,6 +3,7 @@ import PyPDF2
 import pdfplumber
 from docx import Document as DocxDocument
 from openpyxl import load_workbook
+import xlrd
 from pptx import Presentation
 from bs4 import BeautifulSoup
 import os
@@ -17,6 +18,7 @@ class DocumentProcessor:
     - PDF: PyPDF2 + pdfplumber (Vietnamese support)
     - DOCX/DOC: python-docx
     - XLSX: openpyxl
+    - XLS: xlrd (Excel 97-2003)
     - PPTX: python-pptx
     - HTML: BeautifulSoup
     - TXT: Plain text
@@ -189,9 +191,55 @@ class DocumentProcessor:
                         text += row_text + "\n"
         
         except Exception as e:
-            raise Exception(f"Failed to extract XLSX: {str(e)}")
+            error_msg = str(e)
+            if "File is not a zip file" in error_msg:
+                raise Exception(
+                    "Failed to extract XLSX: File is not a valid XLSX file. "
+                    "This may be an old Excel 97-2003 (.xls) file renamed to .xlsx, "
+                    "or the file is corrupted. Please use the correct extension."
+                )
+            raise Exception(f"Failed to extract XLSX: {error_msg}")
         
         return text if text else "Unable to extract text from XLSX"
+    
+    @staticmethod
+    def extract_text_from_xls(file_content: bytes) -> str:
+        """
+        Extract text từ Excel 97-2003 (.xls) sử dụng xlrd
+        
+        Includes:
+        - All sheets
+        - Cell values
+        - Preserves structure
+        
+        Args:
+            file_content: Raw XLS bytes
+        
+        Returns:
+            Extracted text
+        """
+        text = ""
+        
+        try:
+            workbook = xlrd.open_workbook(file_contents=file_content)
+            
+            for sheet_idx in range(workbook.nsheets):
+                sheet = workbook.sheet_by_index(sheet_idx)
+                text += f"\n=== SHEET: {sheet.name} ===\n"
+                
+                for row_idx in range(sheet.nrows):
+                    row_values = [
+                        str(cell) if cell is not None else ""
+                        for cell in sheet.row_values(row_idx)
+                    ]
+                    row_text = " | ".join(row_values)
+                    if row_text.strip():
+                        text += row_text + "\n"
+        
+        except Exception as e:
+            raise Exception(f"Failed to extract XLS: {str(e)}")
+        
+        return text if text else "Unable to extract text from XLS"
     
     @staticmethod
     def extract_text_from_pptx(file_content: bytes) -> str:
@@ -300,8 +348,10 @@ class DocumentProcessor:
             text = DocumentProcessor.extract_text_from_pdf(file_content, filename)
         elif ext in ['.docx', '.doc']:
             text = DocumentProcessor.extract_text_from_docx(file_content)
-        elif ext in ['.xlsx', '.xls']:
+        elif ext == '.xlsx':
             text = DocumentProcessor.extract_text_from_xlsx(file_content)
+        elif ext == '.xls':
+            text = DocumentProcessor.extract_text_from_xls(file_content)
         elif ext == '.pptx':
             text = DocumentProcessor.extract_text_from_pptx(file_content)
         elif ext == '.html':

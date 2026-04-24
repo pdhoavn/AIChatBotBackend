@@ -41,6 +41,7 @@ pdfplumber==0.10.3            # Better PDF parsing (Vietnamese support)
 python-docx==0.8.11           # Extract text from DOCX/DOC
 python-pptx==0.6.21           # Extract text from PPTX (optional)
 openpyxl==3.1.2               # Extract text from XLSX (optional)
+xlrd>=2.0.1                   # Extract text from XLS (Excel 97-2003)
 beautifulsoup4==4.12.2        # HTML parsing
 lxml==4.9.3                   # XML parsing (needed by BeautifulSoup)
 
