@@ -1280,9 +1280,10 @@ class TrainingService:
         
         # STEP 1: Search training Q&A
         qa_results = self.search_training_qa(query, top_k=3)
-        
+        print("qa result " + qa_results[0].payload.get("answer_text"))
+        print(f"score: + {qa_results[0].score}")
         # TIER 1: Perfect match (score > 0.7)
-        if qa_results and qa_results[0].score > 0.7:
+        if qa_results and qa_results[0].score > 0.5:
             top_match = qa_results[0]
             return {
                 "response_official_answer": top_match.payload.get("answer_text"),
