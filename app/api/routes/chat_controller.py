@@ -137,9 +137,11 @@ async def websocket_chat(websocket: WebSocket):
                     # Chạy document search lại
                     doc_results = service.search_documents(
                         enriched_query,
+                        audience_ids= audience_id,
+                        intent_id=intent_id_from_client,
                         top_k=5,
                         trace_id=trace_id,
-                        stage="qa_fallback_document_search",
+                        stage="document_recheck_search",
                     )
                     result = service.build_document_search_result(doc_results)
                     confidence = result.get("confidence", 0.0)
