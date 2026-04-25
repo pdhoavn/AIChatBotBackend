@@ -334,21 +334,39 @@ def get_categories(
     db: Session = Depends(get_db)
 ):
     """
-    Get distinct intents linked to knowledge base documents.
+    Get distinct intents linked to:
+    - knowledge base documents
+    - training questions
     Optionally filter by target_audience to only return intents relevant to the selected audience.
     """
-    query = db.query(entities.Intent).join(
-        entities.KnowledgeBaseDocument,
-        entities.Intent.intent_id == entities.KnowledgeBaseDocument.intend_id
+    # Intent IDs from documents
+    doc_intent_ids = db.query(
+        entities.KnowledgeBaseDocument.intend_id.label("intent_id")
+    ).filter(
+        entities.KnowledgeBaseDocument.intend_id.isnot(None)
     )
-
     if target_audience:
-        query = query.filter(entities.KnowledgeBaseDocument.target_audiences.any(target_audience))
+        doc_intent_ids = doc_intent_ids.filter(
+            entities.KnowledgeBaseDocument.target_audiences.any(target_audience)
+        )
 
-    # Only include documents that are actually linked to an intent
-    query = query.filter(entities.KnowledgeBaseDocument.intend_id.isnot(None))
+    # Intent IDs from training questions
+    qa_intent_ids = db.query(
+        entities.TrainingQuestionAnswer.intent_id.label("intent_id")
+    ).filter(
+        entities.TrainingQuestionAnswer.intent_id.isnot(None)
+    )
+    if target_audience:
+        qa_intent_ids = qa_intent_ids.filter(
+            entities.TrainingQuestionAnswer.target_audiences.any(target_audience)
+        )
 
-    intents = query.distinct().all()
+    # Union intent IDs from both sources, then fetch Intent records
+    all_intent_ids = doc_intent_ids.union(qa_intent_ids).subquery()
+    intents = db.query(entities.Intent).join(
+        all_intent_ids,
+        entities.Intent.intent_id == all_intent_ids.c.intent_id
+    ).all()
     return intents
 
 @router.get("/documents/{document_id}/download")
