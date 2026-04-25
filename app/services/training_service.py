@@ -12,7 +12,7 @@ import uuid
 import asyncio
 from sqlalchemy.orm import Session
 from app.models import schemas
-from app.models.entities import AcademicScore, ChatInteraction, ChatSession, DocumentChunk, FaqStatistics, KnowledgeBaseDocument, Major, ParticipateChatSession, RiasecResult, TrainingQuestionAnswer
+from app.models.entities import AcademicScore, ChatInteraction, ChatSession, DocumentChunk, FaqStatistics, Intent, KnowledgeBaseDocument, Major, ParticipateChatSession, RiasecResult, TargetAudience, TrainingQuestionAnswer
 from app.models.database import SessionLocal
 from sqlalchemy.exc import SQLAlchemyError
 from app.services.memory_service import MemoryManager
@@ -760,8 +760,10 @@ class TrainingService:
 
             Nhiệm vụ của bạn KHÔNG phải trả lời kiến thức,
             mà là xử lý tình huống, tự tạo câu phản hồi phù hợp với CÂU HỎI NGƯỜI DÙNG khi NGỮ CẢNH ĐƯỢC CUNG CẤP
-            KHÔNG PHÙ HỢP với ý định câu hỏi người dùng.
-
+            KHÔNG PHÙ HỢP hoặc CHƯA CÓ DATA với ý định câu hỏi người dùng.
+            ## Hướng xử lý
+            - Đưa ra cách giải quyết cụ thể (liên hệ phòng ban phù hợp hoặc kênh hỗ trợ chính thức)
+            - Nếu có thể, gợi ý loại đơn vị cần liên hệ dựa theo trường đại học bạn đang tư vấn (ví dụ: Phòng Tổ chức Hành chính, Phòng Đào tạo...)
             === NGUYÊN TẮC BẮT BUỘC ===
             - TUYỆT ĐỐI không suy diễn thông tin từ ngữ cảnh.
             - TUYỆT ĐỐI không trả lời theo nội dung ngữ cảnh nếu không khớp rõ ràng.
@@ -775,7 +777,7 @@ class TrainingService:
             3. Hướng người dùng đi đúng hướng tiếp theo.
             4. Có thể chào hỏi nếu người dùng gửi lời chào
             5. Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
-
+            6. Giải thích rằng hệ thống hiện chưa có dữ liệu phù hợp 
             === PHONG CÁCH TRẢ LỜI ===
             - Thân thiện, tự nhiên, không máy móc
             - Không chào hỏi dài dòng
@@ -898,7 +900,16 @@ class TrainingService:
 
         if qa.status != "draft":
             raise Exception("Only draft QA can be approved")
-
+        
+        intent = db.query(Intent).filter_by(intent_id=qa.intent_id).first()
+        audience_names = qa.target_audiences or []
+        audiences = db.query(TargetAudience).filter(
+        TargetAudience.name.in_(audience_names)
+        ).all()
+        if not audiences:
+            raise Exception("No valid audiences found")
+        audience_ids = [a.id for a in audiences]
+        audience_names = [a.name for a in audiences]
         # embed question (answer không embed)
         embedding = self.embeddings.embed_query(qa.question)
         point_id = str(uuid.uuid4())
@@ -913,6 +924,10 @@ class TrainingService:
                     payload={
                         "question_id": qa.question_id,
                         "intent_id": qa.intent_id,
+                        
+                        #MULTI AUDIENCE
+                        "audience_ids": audience_ids,
+                        "audience_names": audience_names,
                         "question_text": qa.question,
                         "answer_text": qa.answer,
                         "type": "training_qa"
@@ -982,7 +997,21 @@ class TrainingService:
 
         if doc.status != "draft":
             raise Exception("Only draft documents can be approved")
+        audience_names_input = doc.target_audiences or []
 
+        audiences = db.query(TargetAudience).filter(
+            TargetAudience.name.in_(audience_names_input)
+        ).all()
+
+        if not audiences:
+            raise Exception("No valid audiences found")
+
+        audience_ids = [a.id for a in audiences]
+        audience_names = [a.name for a in audiences]
+        missing = set(audience_names_input) - set(audience_names)
+        if missing:
+            raise Exception(f"Audience not found: {missing}")
+        
         abs_path = os.path.abspath(doc.file_path)
         print("OPEN FILE:", abs_path)
 
@@ -1042,6 +1071,9 @@ class TrainingService:
                             "document_id": document_id,
                             "chunk_index": i,
                             "chunk_text": chunk,
+                            # multi audience
+                            "audience_ids": audience_ids,
+                            "audience_names": audience_names,
                             "intent_id": intent_id,
                             "metadata": metadata or {},
                             "type": "document"
@@ -1193,13 +1225,17 @@ class TrainingService:
     
     
 
+
     def search_documents(
         self,
         query: str,
+        audience_ids: int,
+        intent_id: int = None,
         top_k: int = 5,
         trace_id: Optional[str] = None,
         stage: str = "document_search",
     ):
+
         """
         Search documents (Fallback)
         
@@ -1215,19 +1251,36 @@ class TrainingService:
         Returns:
             List of document chunks
         """
+
+        must_conditions = [
+            {
+                "key": "audience_ids",
+                "match": {"value": audience_ids}
+            }
+        ]
+        if intent_id:
+            must_conditions.append({
+                "key": "intent_id",
+                "match": {"value": intent_id}
+            })
+
         
         start = time.perf_counter()
         self._debug_log(
             f"{stage}: start search_documents top_k={top_k} query_len={len(query or '')}",
             trace_id
         )
+
         try:
             query_embedding = self.embeddings.embed_query(query)
 
             results = self.qdrant_client.search(
                 collection_name=self.documents_collection,
                 query_vector=query_embedding,
-                limit=top_k
+                limit=top_k,
+                query_filter={
+                    "must": must_conditions
+                }
             )
 
             elapsed_ms = int((time.perf_counter() - start) * 1000)
@@ -1308,17 +1361,24 @@ class TrainingService:
         top_match = doc_results[0] if doc_results else None
         intent_id = 0
         confidence = 0.0
-
-        if top_match is not None:
-            payload = getattr(top_match, "payload", {}) or {}
-            intent_id = payload.get("intent_id") or 0
-            confidence = float(getattr(top_match, "score", 0.0) or 0.0)
-
+        audience_ids = 0
+        audience_names = ""
+        try:
+            if top_match is not None:
+                payload = getattr(top_match, "payload", {}) or {}
+                intent_id = payload.get("intent_id") or 0
+                confidence = float(getattr(top_match, "score", 0.0) or 0.0)
+                audience_ids = top_match.payload.get("audience_ids"),
+                audience_names = top_match.payload.get("audience_names"),
+        except Exception as e:
+                print(f"build_document_search_result error: {e}")
         return {
             "response": doc_results,
             "response_source": "document",
             "confidence": confidence,
             "top_match": top_match,
+            "audience_ids": audience_ids,
+            "audience_names": audience_names,
             "intent_id": intent_id,
             "sources": self.extract_document_sources(doc_results),
         }
@@ -1436,13 +1496,17 @@ Yêu cầu:
         ]
         return any(marker in text for marker in markers)
     
+
     def search_training_qa(
         self,
         query: str,
+        audience_ids: int,
+        intent_id: int = None,
         top_k: int = 5,
         trace_id: Optional[str] = None,
         stage: str = "training_qa_search",
     ):
+
         """
         Search training Q&A (Priority 1)
         
@@ -1458,19 +1522,36 @@ Yêu cầu:
         Returns:
             List of search results with scores
         """
+
+        must_conditions = [
+            {
+                "key": "audience_ids",
+                "match": {"value": audience_ids}
+            }
+        ]
+        if intent_id:
+            must_conditions.append({
+                "key": "intent_id",
+                "match": {"value": intent_id}
+            })
+
         
         start = time.perf_counter()
         self._debug_log(
             f"{stage}: start search_training_qa top_k={top_k} query_len={len(query or '')}",
             trace_id
         )
+
         try:
             query_embedding = self.embeddings.embed_query(query)
 
             results = self.qdrant_client.search(
                 collection_name=self.training_qa_collection,
                 query_vector=query_embedding,
-                limit=top_k
+                limit=top_k,
+                query_filter={
+                    "must": must_conditions
+                }
             )
 
             elapsed_ms = int((time.perf_counter() - start) * 1000)
@@ -1492,7 +1573,10 @@ Yêu cầu:
             )
             print(f"Qdrant search_training_qa timeout/error: {e}")
             return []
-    def hybrid_search(self, query: str, trace_id: Optional[str] = None):
+
+
+    def hybrid_search(self, audience_ids: int, query: str, intent_id: int = None, trace_id: Optional[str] = None):
+
         """
         Hybrid RAG Search Strategy
         
@@ -1526,12 +1610,15 @@ Yêu cầu:
         """
         
         # STEP 1: Search training Q&A
+
         self._debug_log(
             f"hybrid_search: start query_len={len(query or '')}",
             trace_id
         )
         qa_results = self.search_training_qa(
             query,
+            audience_ids, 
+            intent_id,
             top_k=3,
             trace_id=trace_id,
             stage="hybrid_training_qa_search",
@@ -1545,8 +1632,9 @@ Yêu cầu:
             )
         else:
             self._debug_log("hybrid_search: qa_results=0", trace_id)
+
         # TIER 1: Perfect match (score > 0.7)
-        if qa_results and qa_results[0].score > 0.5:
+        if qa_results and qa_results[0].score >= 0.5:
             top_match = qa_results[0]
             self._debug_log("hybrid_search: tier=training_qa", trace_id)
             return {
@@ -1555,14 +1643,19 @@ Yêu cầu:
                 "confidence": top_match.score,
                 "top_match": top_match,
                 "intent_id": top_match.payload.get("intent_id"),
+                "audience_ids": top_match.payload.get("audience_ids"),
+                "audience_names": top_match.payload.get("audience_names"),
                 "question_id": top_match.payload.get("question_id"),
                 "sources": []
             }
         
         
         # TIER 2: No training Q&A match, try documents
+
         doc_results = self.search_documents(
             query,
+            audience_ids, 
+            intent_id,
             top_k=5,
             trace_id=trace_id,
             stage="hybrid_tier2_document_search",
@@ -1574,6 +1667,7 @@ Yêu cầu:
             trace_id
         )
         return result
+
         
     def _get_user_personality_and_academics(self, user_id: int, db: Session) -> Dict[str, Any]:
         out = {

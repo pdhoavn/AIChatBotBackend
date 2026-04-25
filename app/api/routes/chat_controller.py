@@ -29,9 +29,11 @@ async def websocket_chat(websocket: WebSocket):
     
     # 1️⃣ Nhận thông tin user và session trước
     data = await websocket.receive_json()
+    
     user_id = data.get("user_id")
     session_id = data.get("session_id")
-   
+    
+    
     
 
     if not session_id:
@@ -42,12 +44,15 @@ async def websocket_chat(websocket: WebSocket):
         })
 
     await websocket.send_json({"event": "go", "sources": [], "confidence": 1.0})
- 
+    
     try:
         while True:
             # Nhận tin nhắn từ client
             raw_data = await websocket.receive_json()
             message = raw_data.get("message", "").strip()
+            audience_id = raw_data.get("audience_id")
+            intent_id_from_client = raw_data.get("intent_id")
+            print(f"audience_id : {audience_id}, intent_id: {intent_id_from_client}")
             if not message:
                 continue
             trace_id = uuid.uuid4().hex[:8]
@@ -78,10 +83,12 @@ async def websocket_chat(websocket: WebSocket):
            
             # Hybrid search (cả training QA và document)
             try:
+
                 hybrid_start = time.perf_counter()
-                result = service.hybrid_search(enriched_query, trace_id=trace_id)
+                result = service.hybrid_search(audience_id, enriched_query, intent_id_from_client, trace_id=trace_id)
                 hybrid_elapsed_ms = int((time.perf_counter() - hybrid_start) * 1000)
                 _chat_log(f"hybrid_search_done elapsed_ms={hybrid_elapsed_ms}", trace_id)
+
             except Exception as e:
                 print(f"Hybrid search error: {e}")
                 _chat_log(f"hybrid_search_error type={type(e).__name__} message={e}", trace_id)

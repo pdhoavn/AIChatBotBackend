@@ -45,7 +45,6 @@ xlrd>=2.0.1                   # Extract text from XLS (Excel 97-2003)
 beautifulsoup4==4.12.2        # HTML parsing
 lxml==4.9.3                   # XML parsing (needed by BeautifulSoup)
 
-
 unidecode==1.3.7              # Handle Vietnamese characters/accents
 
 
