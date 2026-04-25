@@ -169,6 +169,8 @@ async def websocket_chat(websocket: WebSocket):
             if(tier_source == "document"):
                 doc_results = service.search_documents(
                     enriched_query,
+                    audience_ids= audience_id,
+                    intent_id=intent_id_from_client,
                     top_k=5,
                     trace_id=trace_id,
                     stage="document_recheck_search",
