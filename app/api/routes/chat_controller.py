@@ -275,7 +275,7 @@ async def websocket_chat(websocket: WebSocket):
             elif tier_source == "document" or tier_source == "nope":
                 print("floor 5: nope layer")
                 async for chunk in service.stream_response_from_NA(
-                    enriched_query, context, session_id, user_id, 0, message
+                    enriched_query, context, session_id, user_id, 0, message, audience_id, intent_id_from_client
                 ):
                     await websocket.send_text(json.dumps({
                         "event": "chunk",

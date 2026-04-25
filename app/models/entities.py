@@ -331,6 +331,7 @@ class TargetAudience(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
+    present_name = Column(Text, nullable=True)
     intents = relationship('Intent', back_populates='target_audience', cascade="all, delete-orphan")
     
 class FaqStatistics(Base):

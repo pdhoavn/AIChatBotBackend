@@ -714,7 +714,8 @@ class TrainingService:
         finally:
             db.close()
 
-    async def stream_response_from_NA(self, query: str, context: str, session_id: int = 1, user_id: int = 1, intent_id: int = 0, message: str = ""):
+    async def stream_response_from_NA(self, query: str, context: str, session_id: int = 1, user_id: int = 1, intent_id: int = 0, message: str = "", current_audience_id: int = None,
+current_intent_id: int = None):
         db = SessionLocal()
         try:
             if not user_id:
@@ -744,74 +745,148 @@ class TrainingService:
             memory = memory_service.get_memory(session_id)
             mem_vars = memory.load_memory_variables({})
             chat_history = mem_vars.get("chat_history", "")
+            suggestion = self.cross_scope_search(query)
+            print("Suggestion raw:", suggestion)
+            if suggestion:
+                if (
+                    suggestion["audience_ids"] == current_audience_id and
+                    suggestion["intent_id"] == current_intent_id
+                ):
+                    suggestion = None
 
-            prompt = f"""
-            Bạn là chatbot tư vấn tuyển sinh của trường {self.university_name}.
-            Đây là đoạn hội thoại trước: 
-            {chat_history}
-            === CÂU TRẢ LỜI CHÍNH THỨC ===
-            {context}
+            # ===== BUILD RESPONSE (KHÔNG DÙNG LLM nếu có suggestion) =====
+            if suggestion:
+                if suggestion["source"] == "training_qa":
+                    
+                    response_text = f"""
+                    ## Không tìm thấy thông tin trong mục hiện tại.
 
-            === CÂU HỎI NGƯỜI DÙNG ===
-            {query}
 
-            === HƯỚNG DẪN TRẢ LỜI ===
-            Bạn là tầng phản hồi của chatbot tư vấn tuyển sinh {self.university_name}.
+                    Mình đã kiểm tra trong phạm vi **đối tượng** và **lĩnh vực** bạn đang chọn, 
+                    nhưng hiện tại hệ thống chưa có dữ liệu phù hợp để trả lời chính xác câu hỏi này.
 
-            Nhiệm vụ của bạn KHÔNG phải trả lời kiến thức,
-            mà là xử lý tình huống, tự tạo câu phản hồi phù hợp với CÂU HỎI NGƯỜI DÙNG khi NGỮ CẢNH ĐƯỢC CUNG CẤP
-            KHÔNG PHÙ HỢP hoặc CHƯA CÓ DATA với ý định câu hỏi người dùng.
-            ## Hướng xử lý
-            - Đưa ra cách giải quyết cụ thể (liên hệ phòng ban phù hợp hoặc kênh hỗ trợ chính thức)
-            - Nếu có thể, gợi ý loại đơn vị cần liên hệ dựa theo trường đại học bạn đang tư vấn (ví dụ: Phòng Tổ chức Hành chính, Phòng Đào tạo...)
-            === NGUYÊN TẮC BẮT BUỘC ===
-            - TUYỆT ĐỐI không suy diễn thông tin từ ngữ cảnh.
-            - TUYỆT ĐỐI không trả lời theo nội dung ngữ cảnh nếu không khớp rõ ràng.
-            - Không bịa thông tin.
-            - Không cố gắng “trả lời cho có”.
-            - Nếu câu hỏi vẫn thuộc phạm vi tư vấn tuyển sinh nhưng thiếu thông tin, hãy lịch sự yêu cầu người dùng cung cấp thêm dữ liệu cần thiết(thay vì từ chối trả lời).
 
-            === VIỆC BẠN PHẢI LÀM ===
-            1. Nhận diện rằng nội dung hiện có KHÔNG trả lời đúng câu hỏi.
-            2. Phản hồi một cách lịch sự, rõ ràng, không máy móc, tự nhiên như 1 tư vấn tuyển sinh
-            3. Hướng người dùng đi đúng hướng tiếp theo.
-            4. Có thể chào hỏi nếu người dùng gửi lời chào
-            5. Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
-            6. Giải thích rằng hệ thống hiện chưa có dữ liệu phù hợp 
-            === PHONG CÁCH TRẢ LỜI ===
-            - Thân thiện, tự nhiên, không máy móc
-            - Không chào hỏi dài dòng
-            - Trả lời theo định dạng Markdown: dùng tiêu đề ##, gạch đầu dòng -, xuống dòng rõ ràng.
-            """
-            full_response = ""
-            async for chunk in self.llm.astream(prompt):
-                text = chunk.content or ""
-                full_response += text
-                yield text
-                await asyncio.sleep(0)  # Nhường event loop
+                    Gợi ý nội dung liên quan:                 
 
-            memory.save_context({"input": query}, {"output": full_response})  
-            print("Saved to memory. Current messages:", len(memory.chat_memory.messages))
 
-            # === Lưu bot response vào DB ===
-            bot_msg = ChatInteraction(
-                message_text=full_response,
-                timestamp=datetime.now(),
-                rating=None,
-                is_from_bot=True,
-                sender_id=None,
-                session_id=session_id
-            )
-            db.add(bot_msg)
-            db.flush()
-            # 🧩 5. Commit 1 lần duy nhất
-            db.commit()
-            self.update_faq_statistics(db, bot_msg.interaction_id, intent_id=intent_id)
-            self.update_faq_statistics_for_query(db, user_msg.interaction_id, intent_id = intent_id)
-            print(f"💾 Saved both user+bot messages for session {session_id}")
+                    Mình phát hiện câu hỏi của bạn có thể thuộc phạm vi khác trong hệ thống: 
+
+
+                    - **Đối tượng phù hợp**: {suggestion['audience_names']}
+
+                    - **Lĩnh vực liên quan**: {suggestion['intent_name']}
+
+                     .Bạn có thể làm gì tiếp theo?
+
+                    - **Chuyển sang đúng đối tượng / lĩnh vực** để xem thông tin chính xác hơn
+
+                    - Tiếp tục đặt câu hỏi chi tiết hơn (ví dụ: nội dung cụ thể bạn muốn biết)
+
+                    - Nếu cần hỗ trợ sâu hơn, bạn có thể liên hệ trực tiếp bộ phận tư vấn của trường
+
+                    """
+                else:
+                    preview = suggestion.get("chunk_preview", "")[:200]
+
+                    response_text = f"""
+                    ## Không tìm thấy thông tin trong mục hiện tại.
+                    Mình đã kiểm tra trong phạm vi **đối tượng** và **lĩnh vực** bạn đang chọn, 
+                    nhưng hiện tại hệ thống chưa có dữ liệu phù hợp để trả lời chính xác câu hỏi này.
+                    Gợi ý nội dung liên quan \n
+                   
+                    Mình phát hiện câu hỏi của bạn có thể thuộc phạm vi khác trong hệ thống:
+                    - **Đối tượng phù hợp**: {suggestion['audience_names']}
+                    - **Lĩnh vực liên quan**: {suggestion['intent_name']}
+
+                    📄 Nội dung gần đúng:
+                    "{preview}..."
+
+                    Bạn có thể làm gì tiếp theo?
+
+                    - **Chuyển sang đúng đối tượng / lĩnh vực** để xem thông tin chính xác hơn
+                    - Tiếp tục đặt câu hỏi chi tiết hơn (ví dụ: nội dung cụ thể bạn muốn biết)
+                    - Nếu cần hỗ trợ sâu hơn, bạn có thể liên hệ trực tiếp bộ phận tư vấn của trường
+
+                    """
+                    # 👉 stream giả lập (không cần LLM)
+                for token in response_text.split():
+                    yield token + " "
+                    await asyncio.sleep(0)
+
+                full_response = response_text
+
+            else:
+
+
+                prompt = f"""
+                Bạn là chatbot tư vấn tuyển sinh của trường {self.university_name}.
+                Đây là đoạn hội thoại trước: 
+                {chat_history}
+                === CÂU TRẢ LỜI CHÍNH THỨC ===
+                {context}
+
+                === CÂU HỎI NGƯỜI DÙNG ===
+                {query}
+
+                === HƯỚNG DẪN TRẢ LỜI ===
+                Bạn là tầng phản hồi của chatbot tư vấn tuyển sinh {self.university_name}.
+
+                Nhiệm vụ của bạn KHÔNG phải trả lời kiến thức,
+                mà là xử lý tình huống, tự tạo câu phản hồi phù hợp với CÂU HỎI NGƯỜI DÙNG khi NGỮ CẢNH ĐƯỢC CUNG CẤP
+                KHÔNG PHÙ HỢP hoặc CHƯA CÓ DATA với ý định câu hỏi người dùng.
+                ## Hướng xử lý
+                - Đưa ra cách giải quyết cụ thể (liên hệ phòng ban phù hợp hoặc kênh hỗ trợ chính thức)
+                - Nếu có thể, gợi ý loại đơn vị cần liên hệ dựa theo trường đại học bạn đang tư vấn (ví dụ: Phòng Tổ chức Hành chính, Phòng Đào tạo...)
+                === NGUYÊN TẮC BẮT BUỘC ===
+                - TUYỆT ĐỐI không suy diễn thông tin từ ngữ cảnh.
+                - TUYỆT ĐỐI không trả lời theo nội dung ngữ cảnh nếu không khớp rõ ràng.
+                - Không bịa thông tin.
+                - Không cố gắng “trả lời cho có”.
+                - Nếu câu hỏi vẫn thuộc phạm vi tư vấn tuyển sinh nhưng thiếu thông tin, hãy lịch sự yêu cầu người dùng cung cấp thêm dữ liệu cần thiết(thay vì từ chối trả lời).
+
+                === VIỆC BẠN PHẢI LÀM ===
+                1. Nhận diện rằng nội dung hiện có KHÔNG trả lời đúng câu hỏi.
+                2. Phản hồi một cách lịch sự, rõ ràng, không máy móc, tự nhiên như 1 tư vấn tuyển sinh
+                3. Hướng người dùng đi đúng hướng tiếp theo.
+                4. Có thể chào hỏi nếu người dùng gửi lời chào
+                5. Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
+                6. Giải thích rằng hệ thống hiện chưa có dữ liệu phù hợp 
+                === PHONG CÁCH TRẢ LỜI ===
+                - Thân thiện, tự nhiên, không máy móc
+                - Không chào hỏi dài dòng
+                - Trả lời theo định dạng Markdown: dùng tiêu đề ##, gạch đầu dòng -, xuống dòng rõ ràng.
+                """
+                full_response = ""
+                async for chunk in self.llm.astream(prompt):
+                    text = chunk.content or ""
+                    full_response += text
+                    yield text
+                    await asyncio.sleep(0)  # Nhường event loop
+
+                memory.save_context({"input": query}, {"output": full_response})  
+                print("Saved to memory. Current messages:", len(memory.chat_memory.messages))
+
+                # === Lưu bot response vào DB ===
+                bot_msg = ChatInteraction(
+                    message_text=full_response,
+                    timestamp=datetime.now(),
+                    rating=None,
+                    is_from_bot=True,
+                    sender_id=None,
+                    session_id=session_id
+                )
+                db.add(bot_msg)
+                db.flush()
+                # 🧩 5. Commit 1 lần duy nhất
+                db.commit()
+                self.update_faq_statistics(db, bot_msg.interaction_id, intent_id=intent_id)
+                self.update_faq_statistics_for_query(db, user_msg.interaction_id, intent_id = intent_id)
+                print(f"💾 Saved both user+bot messages for session {session_id}")
         except SQLAlchemyError as e:
             db.rollback()
             print(f" Database error during chat transaction: {e}")
+        except Exception as e:
+                print(f"response NA error: {e}")
         finally:
             db.close() 
 
@@ -910,6 +985,8 @@ class TrainingService:
             raise Exception("No valid audiences found")
         audience_ids = [a.id for a in audiences]
         audience_names = [a.name for a in audiences]
+        filtered_audience_names = [a.present_name for a in audiences]
+        
         # embed question (answer không embed)
         embedding = self.embeddings.embed_query(qa.question)
         point_id = str(uuid.uuid4())
@@ -924,10 +1001,10 @@ class TrainingService:
                     payload={
                         "question_id": qa.question_id,
                         "intent_id": qa.intent_id,
-                        
+                        "intent_name": intent.intent_name if intent else None,
                         #MULTI AUDIENCE
                         "audience_ids": audience_ids,
-                        "audience_names": audience_names,
+                        "audience_names": filtered_audience_names,
                         "question_text": qa.question,
                         "answer_text": qa.answer,
                         "type": "training_qa"
@@ -1008,13 +1085,14 @@ class TrainingService:
 
         audience_ids = [a.id for a in audiences]
         audience_names = [a.name for a in audiences]
+        filtered_audience_names = [a.present_name for a in audiences]
         missing = set(audience_names_input) - set(audience_names)
         if missing:
             raise Exception(f"Audience not found: {missing}")
         
         abs_path = os.path.abspath(doc.file_path)
         print("OPEN FILE:", abs_path)
-
+        intent = db.query(Intent).filter_by(intent_id=intent_id).first()
         with open(abs_path, "rb") as f:
             file_bytes = f.read()
 
@@ -1073,8 +1151,9 @@ class TrainingService:
                             "chunk_text": chunk,
                             # multi audience
                             "audience_ids": audience_ids,
-                            "audience_names": audience_names,
+                            "audience_names": filtered_audience_names,
                             "intent_id": intent_id,
+                            "intent_name": intent.intent_name if intent else None,
                             "metadata": metadata or {},
                             "type": "document"
                         }
@@ -1163,6 +1242,51 @@ class TrainingService:
         
     #     return chunk_ids
     
+    def cross_scope_search(self, query: str, top_k: int = 3):
+        query_embedding = self.embeddings.embed_query(query)
+
+        # ===== 1. SEARCH TRAINING QA =====
+        qa_results = self.qdrant_client.search(
+            collection_name=self.training_qa_collection,
+            query_vector=query_embedding,
+            limit=top_k
+        )
+        
+        if qa_results and qa_results[0].score >= 0.5:
+            top = qa_results[0]
+           
+            return {
+                "source": "training_qa",
+                "audience_ids": top.payload.get("audience_ids"),
+                "audience_names": top.payload.get("audience_names"),
+                "intent_id": top.payload.get("intent_id"),
+                "intent_name": top.payload.get("intent_name"),
+                "question": top.payload.get("question_text"),
+                "score": top.score
+            }
+
+        # ===== 2. SEARCH DOCUMENT =====
+        doc_results = self.qdrant_client.search(
+            collection_name=self.documents_collection,
+            query_vector=query_embedding,
+            limit=top_k
+        )
+
+        if doc_results and doc_results[0].score >= 0.5:
+            top = doc_results[0]
+
+            return {
+                "source": "document",
+                "audience_ids": top.payload.get("audience_ids"),
+                "audience_names": top.payload.get("audience_names"),
+                "intent_id": top.payload.get("intent_id"),
+                "intent_name": top.payload.get("intent_name"),
+                "chunk_preview": top.payload.get("chunk_text", "")[:200],
+                "score": top.score
+            }
+
+        return None
+
     def add_training_qa(self, db: Session, intent_id: int, question_text: str, answer_text: str):
         """
         Add training Q&A pair vào Qdrant
