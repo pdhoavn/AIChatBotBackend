@@ -1252,7 +1252,7 @@ current_intent_id: int = None):
             limit=top_k
         )
         
-        if qa_results and qa_results[0].score >= 0.5:
+        if qa_results and qa_results[0].score >= 0.35:
             top = qa_results[0]
            
             return {
@@ -1272,7 +1272,7 @@ current_intent_id: int = None):
             limit=top_k
         )
 
-        if doc_results and doc_results[0].score >= 0.5:
+        if doc_results and doc_results[0].score >= 0.35:
             top = doc_results[0]
 
             return {
@@ -1758,7 +1758,7 @@ Yêu cầu:
             self._debug_log("hybrid_search: qa_results=0", trace_id)
 
         # TIER 1: Perfect match (score > 0.7)
-        if qa_results and qa_results[0].score >= 0.5:
+        if qa_results and qa_results[0].score >= 0.35:
             top_match = qa_results[0]
             self._debug_log("hybrid_search: tier=training_qa", trace_id)
             return {

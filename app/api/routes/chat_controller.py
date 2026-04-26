@@ -108,7 +108,7 @@ async def websocket_chat(websocket: WebSocket):
                 trace_id
             )
             # === TIER 1: training_qa - score > 0.8 ===
-            if tier_source == "training_qa" and confidence > 0.5:
+            if tier_source == "training_qa" and confidence > 0.35:
                 print("floor 1")
                 top = result["top_match"]
                 q_text = top.payload.get("question_text")
@@ -194,7 +194,7 @@ async def websocket_chat(websocket: WebSocket):
                 print(confidence)
             print("SOURCE NAME: " + tier_source)
             # === TIER 2: document-only (no QA match) ===
-            if tier_source == "document" and confidence >= 0.5:
+            if tier_source == "document" and confidence >= 0.35:
                 print("🔍 floor 3: using document context")
                 answer_text = ""
                 async for chunk in service.stream_response_from_context(
