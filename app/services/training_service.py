@@ -819,7 +819,7 @@ current_intent_id: int = None):
 
 
                 prompt = f"""
-                Bạn là chatbot tư vấn tuyển sinh của trường {self.university_name}.
+                Bạn là chatbot tra cứu thông tin {current_audience_id} của mục {current_intent_id} của trường {self.university_name}.
                 Đây là đoạn hội thoại trước: 
                 {chat_history}
                 === CÂU TRẢ LỜI CHÍNH THỨC ===
@@ -829,7 +829,7 @@ current_intent_id: int = None):
                 {query}
 
                 === HƯỚNG DẪN TRẢ LỜI ===
-                Bạn là tầng phản hồi của chatbot tư vấn tuyển sinh {self.university_name}.
+                Bạn là tầng phản hồi của chatbot tra cứu thông tin {current_audience_id} của mục {current_intent_id} của trường {self.university_name}.
 
                 Nhiệm vụ của bạn KHÔNG phải trả lời kiến thức,
                 mà là xử lý tình huống, tự tạo câu phản hồi phù hợp với CÂU HỎI NGƯỜI DÙNG khi NGỮ CẢNH ĐƯỢC CUNG CẤP
@@ -1252,7 +1252,7 @@ current_intent_id: int = None):
             limit=top_k
         )
         
-        if qa_results and qa_results[0].score >= 0.35:
+        if qa_results and qa_results[0].score >= 0.5:
             top = qa_results[0]
            
             return {
@@ -1272,7 +1272,7 @@ current_intent_id: int = None):
             limit=top_k
         )
 
-        if doc_results and doc_results[0].score >= 0.35:
+        if doc_results and doc_results[0].score >= 0.5:
             top = doc_results[0]
 
             return {
