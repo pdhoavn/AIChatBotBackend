@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
-from datetime import date
+from datetime import date, datetime
 
 
 # ================= AUTH =================
@@ -320,8 +320,8 @@ class TrainingQuestionResponse(TrainingQuestionRequest):
     question_id: int
     intent_name: Optional[str]
     status: Optional[str] = "draft"  # draft, approved, rejected, deleted
-    created_at: Optional[date] = None
-    approved_at: Optional[date] = None
+    created_at: Optional[datetime] = None
+    approved_at: Optional[datetime] = None
     created_by: Optional[int] = None
     approved_by: Optional[int] = None
     reject_reason: Optional[str] = None
@@ -351,20 +351,22 @@ class KnowledgeBaseDocumentBase(BaseModel):
     title: str
     file_path: str
     category: Optional[str]
-    created_at: Optional[date]
-    updated_at: Optional[date]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
     created_by: Optional[int]
     reject_reason: Optional[str] = None
     target_audiences: Optional[List[str]] = []
+    content: Optional[str] = None
 
 
 class KnowledgeBaseDocumentResponse(KnowledgeBaseDocumentBase):
     document_id: int
     status: Optional[str] = "draft"  # draft, approved, rejected, deleted
     reviewed_by: Optional[int] = None
-    reviewed_at: Optional[date] = None
+    reviewed_at: Optional[datetime] = None
     reject_reason: Optional[str] = None
     target_audiences: Optional[List[str]] = []
+    content: Optional[str] = None
     intent_id: Optional[int] = None
     intent_name: Optional[str] = None
 
@@ -380,6 +382,49 @@ class DocumentChunkBase(BaseModel):
 
 class DocumentChunkResponse(DocumentChunkBase):
     chunk_id: int
+
+    class Config:
+        orm_mode = True
+
+
+# ================= DOCUMENT DETAIL =================
+class DocumentChunkItemResponse(BaseModel):
+    chunk_id: Optional[int] = None
+    point_id: Optional[str] = None
+    chunk_index: Optional[int] = None
+    chunk_text: str
+    char_count: int
+
+    class Config:
+        orm_mode = True
+
+
+class DocumentContentResponse(BaseModel):
+    document_id: int
+    content: Optional[str] = None
+    char_count: int
+
+    class Config:
+        orm_mode = True
+
+
+class DocumentDetailResponse(BaseModel):
+    document_id: int
+    title: str
+    file_path: str
+    category: Optional[str] = None
+    status: Optional[str] = "draft"
+    created_at: Optional[date] = None
+    updated_at: Optional[date] = None
+    created_by: Optional[int] = None
+    reviewed_by: Optional[int] = None
+    reviewed_at: Optional[date] = None
+    target_audiences: Optional[List[str]] = []
+    intent_id: Optional[int] = None
+    intent_name: Optional[str] = None
+    content_char_count: int
+    chunk_count: int
+    qdrant_points_count: int
 
     class Config:
         orm_mode = True

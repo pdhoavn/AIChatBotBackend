@@ -1,6 +1,6 @@
 import datetime
 from sqlalchemy import (
-    Column, Integer, String, Boolean, Date, Float, ForeignKey, Text
+    Column, Integer, String, Boolean, Date, DateTime, Float, ForeignKey, Text
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 from datetime import datetime
@@ -366,10 +366,10 @@ class TrainingQuestionAnswer(Base):
     answer = Column(String)
     status = Column(String, default="draft")  # Values: draft, approved, rejected, deleted
     intent_id = Column(Integer, ForeignKey("Intent.intent_id"))
-    created_at = Column(Date, default=datetime.now, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=True)
     created_by = Column(Integer, ForeignKey("Users.user_id"))
     approved_by = Column(Integer, ForeignKey("Users.user_id"), nullable=True)
-    approved_at = Column(Date, nullable=True)
+    approved_at = Column(DateTime, nullable=True)
     reject_reason = Column(String, nullable=True)
     target_audiences = Column(ARRAY(String), default=[])
     # removed rejected_by/rejected_at: rejection author/date are not stored as separate columns
@@ -414,14 +414,15 @@ class KnowledgeBaseDocument(Base):
     category = Column(String)
     intend_id = Column(Integer, ForeignKey('Intent.intent_id'))
     status = Column(String, default="draft")  # Values: draft, approved, rejected, deleted
-    created_at = Column(Date, default=datetime.now)
-    updated_at = Column(Date, onupdate=datetime.now)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, onupdate=datetime.now)
     created_by = Column(Integer, ForeignKey('Users.user_id'))
     reviewed_by = Column(Integer, ForeignKey('Users.user_id'), nullable=True)
-    reviewed_at = Column(Date, nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
     reject_reason = Column(String, nullable=True)
     target_audiences = Column(ARRAY(String), default=[])
-    
+    content = Column(Text, nullable=True)
+
     intent = relationship('Intent', back_populates='document')
     # Relationships
     chunks = relationship('DocumentChunk', back_populates='document', cascade="all, delete-orphan")
@@ -431,7 +432,7 @@ class KnowledgeBaseDocument(Base):
 
 class DocumentChunk(Base):
     __tablename__ = 'DocumentChunk'
-    
+
     chunk_id = Column(Integer, primary_key=True, autoincrement=True)
     chunk_text = Column(Text)
     embedding_vector = Column(String)  # Store as JSON or use vector extension
