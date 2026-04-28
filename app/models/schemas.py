@@ -346,6 +346,12 @@ class FaqStatisticsResponse(FaqStatisticsBase):
         orm_mode = True
 
 
+class SuggestionQuestionResponse(BaseModel):
+    question: str
+    created_at: Optional[date]
+
+    class Config:
+        orm_mode = True
 # ================= KNOWLEDGE BASE =================
 class KnowledgeBaseDocumentBase(BaseModel):
     title: str

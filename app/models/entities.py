@@ -308,6 +308,20 @@ class ChatInteraction(Base):
         back_populates='query_from_user'
     )
 
+class QuestionLog(Base):
+    __tablename__ = "QuestionLog"
+
+    id = Column(Integer, primary_key=True)
+    question = Column(Text, nullable=False)
+    created_at = Column(Date, default=datetime.now)
+
+    intent_id = Column(Integer, ForeignKey("Intent.intent_id"))
+    target_audience_id = Column(Integer, ForeignKey("TargetAudience.id"))
+
+    intent = relationship("Intent", back_populates="question_logs")
+    target_audience = relationship("TargetAudience", back_populates="question_logs")
+    
+
 # =====================
 # INTENT, FAQ, RECOMMENDATION, TRAINING QA
 # =====================
@@ -325,6 +339,7 @@ class Intent(Base):
     training_questions = relationship('TrainingQuestionAnswer', back_populates='intent', cascade="all, delete-orphan")
     document = relationship('KnowledgeBaseDocument', back_populates='intent', cascade="all, delete-orphan")
     target_audience = relationship('TargetAudience', back_populates='intents')
+    question_logs = relationship("QuestionLog", back_populates="intent", cascade="all, delete-orphan")
 class TargetAudience(Base):
     __tablename__ = "TargetAudience"
 
@@ -333,7 +348,7 @@ class TargetAudience(Base):
     description = Column(Text, nullable=True)
     present_name = Column(Text, nullable=True)
     intents = relationship('Intent', back_populates='target_audience', cascade="all, delete-orphan")
-    
+    question_logs = relationship("QuestionLog", back_populates="target_audience", cascade="all, delete-orphan")
 class FaqStatistics(Base):
     __tablename__ = 'FaqStatistics'
     

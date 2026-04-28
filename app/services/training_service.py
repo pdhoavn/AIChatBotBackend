@@ -4,7 +4,7 @@ import time
 import json
 import re
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_text_splitters  import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient, models
 from qdrant_client.models import Distance, VectorParams, PointStruct
 import os
@@ -12,7 +12,21 @@ import uuid
 import asyncio
 from sqlalchemy.orm import Session
 from app.models import schemas
-from app.models.entities import AcademicScore, ChatInteraction, ChatSession, DocumentChunk, FaqStatistics, Intent, KnowledgeBaseDocument, Major, ParticipateChatSession, RiasecResult, TargetAudience, TrainingQuestionAnswer
+from app.models.entities import (
+    AcademicScore,
+    ChatInteraction,
+    ChatSession,
+    DocumentChunk,
+    FaqStatistics,
+    Intent,
+    KnowledgeBaseDocument,
+    Major,
+    ParticipateChatSession,
+    QuestionLog,
+    RiasecResult,
+    TargetAudience,
+    TrainingQuestionAnswer,
+)
 from app.models.database import SessionLocal
 from sqlalchemy.exc import SQLAlchemyError
 from app.services.memory_service import MemoryManager
@@ -20,17 +34,15 @@ from app.utils.document_processor import DocumentProcessor
 
 memory_service = MemoryManager()
 
+
 class TrainingService:
     def __init__(self):
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.llm = ChatOpenAI(
-            model="gpt-4.1-mini",
-            api_key=self.openai_api_key,
-            temperature=0.7
+            model="gpt-4.1-mini", api_key=self.openai_api_key, temperature=0.7
         )
         self.embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-large",
-            api_key=self.openai_api_key
+            model="text-embedding-3-large", api_key=self.openai_api_key
         )
         self.qdrant_client = QdrantClient(
             host=os.getenv("QDRANT_HOST", "localhost"),
@@ -40,14 +52,16 @@ class TrainingService:
         )
         self.training_qa_collection = "training_qa"
         self.documents_collection = "knowledge_base_documents"
-        self.university_name = os.getenv("CHAT_UNIVERSITY_NAME", "Đại học Giao thông Vận tải")
+        self.university_name = os.getenv(
+            "CHAT_UNIVERSITY_NAME", "Đại học Giao thông Vận tải"
+        )
         self._init_collections()
 
     def _init_collections(self):
         try:
             self.qdrant_client.create_collection(
                 collection_name=self.training_qa_collection,
-                vectors_config=VectorParams(size=3072, distance=Distance.COSINE)
+                vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
             )
         except:
             pass
@@ -55,7 +69,7 @@ class TrainingService:
         try:
             self.qdrant_client.create_collection(
                 collection_name=self.documents_collection,
-                vectors_config=VectorParams(size=3072, distance=Distance.COSINE)
+                vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
             )
         except:
             pass
@@ -69,41 +83,34 @@ class TrainingService:
     def create_chat_session(self, user_id: int, session_type: str = "chatbot") -> int:
         """
         Tạo chat session mới
-        
+
         Args:
             user_id: ID của user
             session_type: "chatbot" hoặc "live"
-        
+
         Returns:
             session_id: ID của session vừa tạo
         """
-        
+
         db = SessionLocal()
         if not user_id:
-            session = ChatSession(
-                session_type=session_type,
-                start_time=datetime.now()
-            )
+            session = ChatSession(session_type=session_type, start_time=datetime.now())
             db.add(session)
             db.flush()
             db.commit()
             return session.chat_session_id
         try:
-            session = ChatSession(
-                session_type=session_type,
-                start_time=datetime.now()
-            )
+            session = ChatSession(session_type=session_type, start_time=datetime.now())
             db.add(session)
             db.flush()
-            
+
             # Add user vào participate table
             participate = ParticipateChatSession(
-                user_id=user_id,
-                session_id=session.chat_session_id
+                user_id=user_id, session_id=session.chat_session_id
             )
             db.add(participate)
             db.commit()
-            
+
             return session.chat_session_id
         except SQLAlchemyError as e:
             db.rollback()
@@ -115,69 +122,87 @@ class TrainingService:
     def get_session_history(self, session_id: int, limit: int = 50) -> List[Dict]:
         """
         Lấy lịch sử chat của session
-        
+
         Returns:
             List of messages [{message_text, timestamp, is_from_bot}, ...]
         """
         db = SessionLocal()
         try:
-            interactions = db.query(ChatInteraction).filter(
-                ChatInteraction.session_id == session_id
-            ).order_by(
-                ChatInteraction.timestamp.asc()
-            ).limit(limit).all()
-            
+            interactions = (
+                db.query(ChatInteraction)
+                .filter(ChatInteraction.session_id == session_id)
+                .order_by(ChatInteraction.timestamp.asc())
+                .limit(limit)
+                .all()
+            )
+
             return [
                 {
                     "message_text": i.message_text,
                     "timestamp": i.timestamp.isoformat() if i.timestamp else None,
                     "is_from_bot": i.is_from_bot,
-                    "rating": i.rating
+                    "rating": i.rating,
                 }
                 for i in interactions
             ]
         finally:
             db.close()
-    
+
     def get_user_sessions(self, user_id: int) -> List[Dict]:
         """
         Lấy tất cả sessions của user (để hiển thị recent chats)
-        
+
         Returns:
             List of sessions với preview message cuối cùng
         """
         db = SessionLocal()
         try:
-            sessions = db.query(ChatSession).filter(ChatSession.session_type == "chatbot").join(
-                ParticipateChatSession
-            ).filter(
-                ParticipateChatSession.user_id == user_id
-            ).order_by(
-                ChatSession.start_time.desc()
-            ).all()
-            
+            sessions = (
+                db.query(ChatSession)
+                .filter(ChatSession.session_type == "chatbot")
+                .join(ParticipateChatSession)
+                .filter(ParticipateChatSession.user_id == user_id)
+                .order_by(ChatSession.start_time.desc())
+                .all()
+            )
+
             result = []
             for session in sessions:
                 # Lấy message cuối cùng làm preview
-                last_msg = db.query(ChatInteraction).filter(
-                    ChatInteraction.session_id == session.chat_session_id
-                ).order_by(
-                    ChatInteraction.timestamp.desc()
-                ).first()
-                
-                result.append({
-                    "session_id": session.chat_session_id,
-                    "session_type": session.session_type,
-                    "start_time": session.start_time.isoformat() if session.start_time else None,
-                    "last_message_preview": last_msg.message_text[:50] + "..." if last_msg else "",
-                    "last_message_time": last_msg.timestamp.isoformat() if last_msg and last_msg.timestamp else None
-                })
-            
+                last_msg = (
+                    db.query(ChatInteraction)
+                    .filter(ChatInteraction.session_id == session.chat_session_id)
+                    .order_by(ChatInteraction.timestamp.desc())
+                    .first()
+                )
+
+                result.append(
+                    {
+                        "session_id": session.chat_session_id,
+                        "session_type": session.session_type,
+                        "start_time": (
+                            session.start_time.isoformat()
+                            if session.start_time
+                            else None
+                        ),
+                        "last_message_preview": (
+                            last_msg.message_text[:50] + "..." if last_msg else ""
+                        ),
+                        "last_message_time": (
+                            last_msg.timestamp.isoformat()
+                            if last_msg and last_msg.timestamp
+                            else None
+                        ),
+                    }
+                )
+
             return result
         finally:
             db.close()
 
-    def delete_chat_session(self, session_id: int, user_id: Optional[int] = None) -> bool:
+    def delete_chat_session(
+        self, session_id: int, user_id: Optional[int] = None
+    ) -> bool:
         """
         Xóa 1 session chat:
         - Nếu có user_id: chỉ xóa session thuộc về user đó
@@ -197,9 +222,7 @@ class TrainingService:
                     ParticipateChatSession.user_id == user_id
                 )
 
-            session = query.filter(
-                ChatSession.chat_session_id == session_id
-            ).first()
+            session = query.filter(ChatSession.chat_session_id == session_id).first()
 
             if not session:
                 return False
@@ -257,13 +280,19 @@ class TrainingService:
         print(enriched.content)
         print("======================")
         # fallback: if empty use original
-        enriched_txt = (enriched.content or "").strip().splitlines()[0] if enriched else user_message
-        return enriched_txt   
+        enriched_txt = (
+            (enriched.content or "").strip().splitlines()[0]
+            if enriched
+            else user_message
+        )
+        return enriched_txt
 
     # ---------------------------
     # LLM relevance check: ensure enriched_query actually matches the training QA
     # ---------------------------
-    async def llm_relevance_check(self, enriched_query: str, matched_question: str, answer: str) -> bool:
+    async def llm_relevance_check(
+        self, enriched_query: str, matched_question: str, answer: str
+    ) -> bool:
         prompt = f"""
         Bạn là chuyên gia đánh giá giữa câu hỏi tìm kiếm, câu hỏi trong cơ sở dữ liệu và câu trả lời cho 1 hệ thống chat RAG tuyển sinh, hãy suy luận. 
 
@@ -278,9 +307,16 @@ class TrainingService:
         if not res.content:
             return False
         r = res.content.strip().lower()
-        return ("đúng" in r) or ("true" in r) or (r.startswith("đúng")) or (r.startswith("true"))
+        return (
+            ("đúng" in r)
+            or ("true" in r)
+            or (r.startswith("đúng"))
+            or (r.startswith("true"))
+        )
 
-    async def llm_document_recommendation_check(self, enriched_query: str, context: str) -> bool:
+    async def llm_document_recommendation_check(
+        self, enriched_query: str, context: str
+    ) -> bool:
         prompt = f"""
         Bạn là hệ thống kiểm tra 2 tầng:
         - Tầng 1 là hệ thống kiểm tra mức độ liên quan giữa câu hỏi người dùng và nội dung trong Document Base (RAG) cho chatbot RAG tư vấn tuyển sinh.
@@ -325,7 +361,9 @@ class TrainingService:
             r = "nope"
         return r
 
-    async def llm_suitable_for_recommedation_check(self, enriched_query: str, context: str) -> bool:
+    async def llm_suitable_for_recommedation_check(
+        self, enriched_query: str, context: str
+    ) -> bool:
         prompt = f"""
         Bạn là hệ thống kiểm tra mức độ liên quan giữa câu hỏi người dùng có liên quan đến các nội dung tư vấn ngành học hay tư vấn cho cá nhân dựa theo hồ sơ của học sinh hoặc những câu liên quan đến RIASEC, học bạ, GPA, sở thích, nguyện vọng cá nhân; hoặc yêu cầu so sánh ngành theo profile; hoặc yêu cầu gợi ý ngành phù hợp cho chatbot RAG tư vấn tuyển sinh.
 
@@ -345,9 +383,16 @@ class TrainingService:
         if not res.content:
             return False
         r = res.content.strip().lower()
-        return ("đúng" in r) or ("true" in r) or (r.startswith("đúng")) or (r.startswith("true"))
+        return (
+            ("đúng" in r)
+            or ("true" in r)
+            or (r.startswith("đúng"))
+            or (r.startswith("true"))
+        )
 
-    async def response_from_riasec_result(self, riasec_result: schemas.RiasecResultCreate):
+    async def response_from_riasec_result(
+        self, riasec_result: schemas.RiasecResultCreate
+    ):
         prompt = f"""
         Bạn là chuyên gia hướng nghiệp Holland (RIASEC).
 
@@ -396,8 +441,7 @@ class TrainingService:
             else:
                 # bot message -> kết hợp với user message trước đó (nếu có)
                 memory.save_context(
-                    {"input": last_user_msg or ""},
-                    {"output": inter.message_text}
+                    {"input": last_user_msg or ""}, {"output": inter.message_text}
                 )
                 last_user_msg = None
 
@@ -406,31 +450,41 @@ class TrainingService:
             memory.save_context({"input": last_user_msg}, {"output": ""})
 
     def update_faq_statistics(self, db: Session, response_id: int, intent_id: int = 1):
-        
+
         try:
-            response = db.query(ChatInteraction).filter(
-            ChatInteraction.interaction_id == response_id,
-            ChatInteraction.is_from_bot == True
-        ).first()
+            response = (
+                db.query(ChatInteraction)
+                .filter(
+                    ChatInteraction.interaction_id == response_id,
+                    ChatInteraction.is_from_bot == True,
+                )
+                .first()
+            )
 
             if not response:
                 raise ValueError("Chatbot response not found")
 
-            faq = FaqStatistics(
-                response_from_chat_id = response_id,
-                intent_id = intent_id
-            )
+            faq = FaqStatistics(response_from_chat_id=response_id, intent_id=intent_id)
             db.add(faq)
             db.commit()
 
         except Exception as e:
             db.rollback()
             print(f"Error updating FaqStatistics: {e}")
-            
 
-    async def stream_response_from_context(self, query: str, context: str, session_id: int, user_id: int, intent_id: int, message: str):
+    async def stream_response_from_context(
+        self,
+        query: str,
+        context: str,
+        session_id: int,
+        user_id: int,
+        intent_id: int,
+        target_audience_id: int,
+        message: str,
+        intent_id_from_client: int = 0,
+    ):
         db = SessionLocal()
-        
+
         try:
             if not user_id:
                 # 🧩 1. Lưu tin nhắn người dùng
@@ -440,7 +494,7 @@ class TrainingService:
                     rating=None,
                     is_from_bot=False,
                     sender_id=None,
-                    session_id=session_id
+                    session_id=session_id,
                 )
                 db.add(user_msg)
                 db.flush()
@@ -452,16 +506,26 @@ class TrainingService:
                     rating=None,
                     is_from_bot=False,
                     sender_id=user_id,
-                    session_id=session_id
+                    session_id=session_id,
                 )
+
                 db.add(user_msg)
                 db.flush()
+            current_quey = QuestionLog(
+                question=message,
+                created_at=datetime.now(),
+                intent_id=(
+                    intent_id_from_client if intent_id_from_client is not None else 0
+                ),
+                target_audience_id=target_audience_id,
+            )
+            db.add(current_quey)
+            db.flush()
             memory = memory_service.get_memory(session_id)
             mem_vars = memory.load_memory_variables({})
             chat_history = mem_vars.get("chat_history", "")
-            
 
-            prompt = f"""Bạn là một tư vấn viên tuyển sinh chuyên nghiệp của trường {self.university_name}
+            prompt = f"""Bạn là một chatbot tra cứu thông tin chuyên nghiệp của trường {self.university_name}
             Đây là đoạn hội thoại trước: 
             {chat_history}
             === THÔNG TIN THAM KHẢO ===
@@ -474,9 +538,10 @@ class TrainingService:
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
             - Trả lời theo định dạng Markdown: dùng tiêu đề ##, gạch đầu dòng -, xuống dòng rõ ràng.
             - Hãy tạo ra câu trả lời không quá dài, gói gọn ý chính, chỉ khi câu hỏi yêu cầu "chi tiết" thì mới tạo câu trả lời đầy đủ
-            - Bạn là tư vấn tuyển sinh của trường {self.university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
+            - Bạn là chatbot tra cứu thông tin chuyên nghiệp của trường {self.university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
             - Nếu không tìm thấy thông tin, hãy nói rõ và gợi ý liên hệ trực tiếp nhân viên tư vấn
             - Không cần phải chào hỏi mỗi lần trả lời, vào thẳng vấn đề chính
+            -gửi full nội dung context
             - Nếu câu hỏi chỉ là chào hỏi, hoặc các câu xã giao, hãy trả lời bằng lời chào thân thiện, giới thiệu về bản thân chatbot, KHÔNG kéo thêm thông tin chi tiết trong context.
             - Khi có thể, hãy **giải thích thêm bối cảnh hoặc gợi ý bước tiếp theo**, ví dụ:  
                 “Bạn muốn mình gửi danh sách ngành đào tạo kèm chuyên ngành chi tiết không?”  
@@ -490,8 +555,8 @@ class TrainingService:
                 yield text
                 await asyncio.sleep(0)  # Nhường event loop
             print(full_response)
-            memory.save_context({"input": query}, {"output": full_response})  
-            
+            memory.save_context({"input": query}, {"output": full_response})
+
             # === Lưu bot response vào DB ===
             bot_msg = ChatInteraction(
                 message_text=full_response,
@@ -499,13 +564,13 @@ class TrainingService:
                 rating=None,
                 is_from_bot=True,
                 sender_id=None,
-                session_id=session_id
+                session_id=session_id,
             )
             db.add(bot_msg)
             db.flush()
             # 🧩 5. Commit 1 lần duy nhất
             db.commit()
-            self.update_faq_statistics(db, bot_msg.interaction_id, intent_id = intent_id)
+            self.update_faq_statistics(db, bot_msg.interaction_id, intent_id=intent_id)
             print(f"💾 Saved both user+bot messages for session {session_id}")
         except SQLAlchemyError as e:
             db.rollback()
@@ -513,9 +578,24 @@ class TrainingService:
         finally:
             db.close()
 
-    async def stream_response_from_qa(self, query: str, context: str, session_id: int = 1, user_id: int = 1, intent_id: int = 1, message: str = ""):
+    async def stream_response_from_qa(
+        self,
+        query: str,
+        context: str,
+        session_id: int = 1,
+        user_id: int = 1,
+        intent_id: int = 1,
+        target_audience_id: int = 1,
+        intent_id_from_client: int = 0,
+        message: str = "",
+    ):
         db = SessionLocal()
         try:
+            print(
+                ">>> intent_id_from_client:",
+                intent_id_from_client,
+                type(intent_id_from_client),
+            )
             if not user_id:
                 # 🧩 1. Lưu tin nhắn người dùng
                 user_msg = ChatInteraction(
@@ -524,8 +604,9 @@ class TrainingService:
                     rating=None,
                     is_from_bot=False,
                     sender_id=None,
-                    session_id=session_id
+                    session_id=session_id,
                 )
+
                 db.add(user_msg)
                 db.flush()
             else:
@@ -536,16 +617,28 @@ class TrainingService:
                     rating=None,
                     is_from_bot=False,
                     sender_id=user_id,
-                    session_id=session_id
+                    session_id=session_id,
                 )
+
                 db.add(user_msg)
                 db.flush()
+
+            current_quey = QuestionLog(
+                question=message,
+                created_at=datetime.now(),
+                intent_id=(
+                    intent_id_from_client if intent_id_from_client is not None else 0
+                ),
+                target_audience_id=target_audience_id,
+            )
+            db.add(current_quey)
+            db.flush()
             memory = memory_service.get_memory(session_id)
             mem_vars = memory.load_memory_variables({})
             chat_history = mem_vars.get("chat_history", "")
 
             prompt = f"""
-            Bạn là chatbot tư vấn tuyển sinh của trường {self.university_name}.
+            Bạn là chatbot tra cứu thông tin chuyên nghiệp của trường {self.university_name}.
             Đây là đoạn hội thoại trước: 
             {chat_history}
             === CÂU TRẢ LỜI CHÍNH THỨC ===
@@ -569,8 +662,10 @@ class TrainingService:
                 yield text
                 await asyncio.sleep(0)  # Nhường event loop
 
-            memory.save_context({"input": query}, {"output": full_response})  
-            print("Saved to memory. Current messages:", len(memory.chat_memory.messages))
+            memory.save_context({"input": query}, {"output": full_response})
+            print(
+                "Saved to memory. Current messages:", len(memory.chat_memory.messages)
+            )
 
             # === Lưu bot response vào DB ===
             bot_msg = ChatInteraction(
@@ -579,27 +674,23 @@ class TrainingService:
                 rating=None,
                 is_from_bot=True,
                 sender_id=None,
-                session_id=session_id
+                session_id=session_id,
             )
             db.add(bot_msg)
             db.flush()
             # 🧩 5. Commit 1 lần duy nhất
             db.commit()
-            
-            self.update_faq_statistics(db, bot_msg.interaction_id, intent_id = intent_id)
+
+            self.update_faq_statistics(db, bot_msg.interaction_id, intent_id=intent_id)
             print(f"💾 Saved both user+bot messages for session {session_id}")
         except SQLAlchemyError as e:
             db.rollback()
             print(f" Database error during chat transaction: {e}")
         finally:
-            db.close() 
-    
+            db.close()
+
     async def stream_response_from_recommendation(
-        self,
-        user_id: int,
-        session_id: int,
-        query: str,
-        message: str
+        self, user_id: int, session_id: int, query: str, message: str
     ):
         db = SessionLocal()
         try:
@@ -611,7 +702,7 @@ class TrainingService:
                     rating=None,
                     is_from_bot=False,
                     sender_id=None,
-                    session_id=session_id
+                    session_id=session_id,
                 )
                 db.add(user_msg)
                 db.flush()
@@ -623,7 +714,7 @@ class TrainingService:
                     rating=None,
                     is_from_bot=False,
                     sender_id=user_id,
-                    session_id=session_id
+                    session_id=session_id,
                 )
                 db.add(user_msg)
                 db.flush()
@@ -641,11 +732,11 @@ class TrainingService:
             maj_texts = []
             for m in majors:
                 line = f"- [{m['major_id']}]: {m['major_name']}"
-                
+
                 if m["specializations"]:
                     for s in m["specializations"]:
                         line += f"\n    • {s['specialization_name']}"
-                
+
                 maj_texts.append(line)
 
             prompt = f"""
@@ -690,8 +781,10 @@ class TrainingService:
                 yield text
                 await asyncio.sleep(0)  # Nhường event loop
 
-            memory.save_context({"input": query}, {"output": full_response})  
-            print("Saved to memory. Current messages:", len(memory.chat_memory.messages))
+            memory.save_context({"input": query}, {"output": full_response})
+            print(
+                "Saved to memory. Current messages:", len(memory.chat_memory.messages)
+            )
 
             # === Lưu bot response vào DB ===
             bot_msg = ChatInteraction(
@@ -700,13 +793,13 @@ class TrainingService:
                 rating=None,
                 is_from_bot=True,
                 sender_id=None,
-                session_id=session_id
+                session_id=session_id,
             )
             db.add(bot_msg)
             db.flush()
             # 🧩 5. Commit 1 lần duy nhất
             db.commit()
-            
+
             print(f"💾 Saved both user+bot messages for session {session_id}")
         except SQLAlchemyError as e:
             db.rollback()
@@ -714,8 +807,17 @@ class TrainingService:
         finally:
             db.close()
 
-    async def stream_response_from_NA(self, query: str, context: str, session_id: int = 1, user_id: int = 1, intent_id: int = 0, message: str = "", current_audience_id: int = None,
-current_intent_id: int = None):
+    async def stream_response_from_NA(
+        self,
+        query: str,
+        context: str,
+        session_id: int = 1,
+        user_id: int = 1,
+        intent_id: int = 0,
+        message: str = "",
+        current_audience_id: int = None,
+        current_intent_id: int = None,
+    ):
         db = SessionLocal()
         try:
             if not user_id:
@@ -726,7 +828,7 @@ current_intent_id: int = None):
                     rating=None,
                     is_from_bot=False,
                     sender_id=None,
-                    session_id=session_id
+                    session_id=session_id,
                 )
                 db.add(user_msg)
                 db.flush()
@@ -738,7 +840,7 @@ current_intent_id: int = None):
                     rating=None,
                     is_from_bot=False,
                     sender_id=user_id,
-                    session_id=session_id
+                    session_id=session_id,
                 )
                 db.add(user_msg)
                 db.flush()
@@ -749,15 +851,15 @@ current_intent_id: int = None):
             print("Suggestion raw:", suggestion)
             if suggestion:
                 if (
-                    suggestion["audience_ids"] == current_audience_id and
-                    suggestion["intent_id"] == current_intent_id
+                    suggestion["audience_ids"] == current_audience_id
+                    and suggestion["intent_id"] == current_intent_id
                 ):
                     suggestion = None
 
             # ===== BUILD RESPONSE (KHÔNG DÙNG LLM nếu có suggestion) =====
             if suggestion:
                 if suggestion["source"] == "training_qa":
-                    
+
                     response_text = f"""
                     ## Không tìm thấy thông tin trong mục hiện tại.
 
@@ -817,7 +919,6 @@ current_intent_id: int = None):
 
             else:
 
-
                 prompt = f"""
                 Bạn là chatbot tra cứu thông tin {current_audience_id} của mục {current_intent_id} của trường {self.university_name}.
                 Đây là đoạn hội thoại trước: 
@@ -863,8 +964,11 @@ current_intent_id: int = None):
                     yield text
                     await asyncio.sleep(0)  # Nhường event loop
 
-                memory.save_context({"input": query}, {"output": full_response})  
-                print("Saved to memory. Current messages:", len(memory.chat_memory.messages))
+                memory.save_context({"input": query}, {"output": full_response})
+                print(
+                    "Saved to memory. Current messages:",
+                    len(memory.chat_memory.messages),
+                )
 
                 # === Lưu bot response vào DB ===
                 bot_msg = ChatInteraction(
@@ -873,79 +977,110 @@ current_intent_id: int = None):
                     rating=None,
                     is_from_bot=True,
                     sender_id=None,
-                    session_id=session_id
+                    session_id=session_id,
                 )
                 db.add(bot_msg)
                 db.flush()
                 # 🧩 5. Commit 1 lần duy nhất
                 db.commit()
-                self.update_faq_statistics(db, bot_msg.interaction_id, intent_id=intent_id)
-                self.update_faq_statistics_for_query(db, user_msg.interaction_id, intent_id = intent_id)
+                self.update_faq_statistics(
+                    db, bot_msg.interaction_id, intent_id=intent_id
+                )
+                self.update_faq_statistics_for_query(
+                    db, user_msg.interaction_id, intent_id=intent_id
+                )
                 print(f"💾 Saved both user+bot messages for session {session_id}")
         except SQLAlchemyError as e:
             db.rollback()
             print(f" Database error during chat transaction: {e}")
         except Exception as e:
-                print(f"response NA error: {e}")
+            print(f"response NA error: {e}")
         finally:
-            db.close() 
+            db.close()
 
-    def add_interaction_and_faq_for_intent_0(self, full_response: str, session_id: int = 1, user_id: int = 1, intent_id: int = 1, message: str = ""):
-            db = SessionLocal()
-            if not user_id:
-                # 🧩 1. Lưu tin nhắn người dùng
-                user_msg = ChatInteraction(
-                    message_text=message,
-                    timestamp=datetime.now(),
-                    rating=None,
-                    is_from_bot=False,
-                    sender_id=None,
-                    session_id=session_id
-                )
-                db.add(user_msg)
-                db.flush()
-            else:
-                # 🧩 1. Lưu tin nhắn người dùng
-                user_msg = ChatInteraction(
-                    message_text=message,
-                    timestamp=datetime.now(),
-                    rating=None,
-                    is_from_bot=False,
-                    sender_id=user_id,
-                    session_id=session_id
-                )
-                db.add(user_msg)
-                db.flush()
-            bot_msg = ChatInteraction(
-                message_text=full_response,
+    def get_suggestion_questions(
+        db: Session, target_audience_id: int, intent_id: Optional[int] = None
+    ) -> List[QuestionLog]:
+
+        query = db.query(QuestionLog).filter(
+            QuestionLog.target_audience_id == target_audience_id
+        )
+
+        if intent_id is not None:
+            query = query.filter(QuestionLog.intent_id == intent_id)
+
+        query = query.order_by(
+            QuestionLog.question, QuestionLog.created_at.desc()
+        ).distinct(QuestionLog.question)
+
+        return query.limit(5).all()
+
+    def add_interaction_and_faq_for_intent_0(
+        self,
+        full_response: str,
+        session_id: int = 1,
+        user_id: int = 1,
+        intent_id: int = 1,
+        message: str = "",
+    ):
+        db = SessionLocal()
+        if not user_id:
+            # 🧩 1. Lưu tin nhắn người dùng
+            user_msg = ChatInteraction(
+                message_text=message,
                 timestamp=datetime.now(),
                 rating=None,
-                is_from_bot=True,
+                is_from_bot=False,
                 sender_id=None,
-                session_id=session_id
+                session_id=session_id,
             )
-            db.add(bot_msg)
+            db.add(user_msg)
             db.flush()
-            db.commit()
-            self.update_faq_statistics_for_query(db, user_msg.interaction_id, intent_id = intent_id)
+        else:
+            # 🧩 1. Lưu tin nhắn người dùng
+            user_msg = ChatInteraction(
+                message_text=message,
+                timestamp=datetime.now(),
+                rating=None,
+                is_from_bot=False,
+                sender_id=user_id,
+                session_id=session_id,
+            )
+            db.add(user_msg)
+            db.flush()
+        bot_msg = ChatInteraction(
+            message_text=full_response,
+            timestamp=datetime.now(),
+            rating=None,
+            is_from_bot=True,
+            sender_id=None,
+            session_id=session_id,
+        )
+        db.add(bot_msg)
+        db.flush()
+        db.commit()
+        self.update_faq_statistics_for_query(
+            db, user_msg.interaction_id, intent_id=intent_id
+        )
 
+    def update_faq_statistics_for_query(
+        self, db: Session, query_id: int, intent_id: int = 1
+    ):
 
-
-    def update_faq_statistics_for_query(self, db: Session, query_id: int, intent_id: int = 1):
-        
         try:
-            response = db.query(ChatInteraction).filter(
-            ChatInteraction.interaction_id == query_id,
-            ChatInteraction.is_from_bot == False
-        ).first()
+            response = (
+                db.query(ChatInteraction)
+                .filter(
+                    ChatInteraction.interaction_id == query_id,
+                    ChatInteraction.is_from_bot == False,
+                )
+                .first()
+            )
 
             if not response:
                 raise ValueError("Chatbot response not found")
 
-            faq = FaqStatistics(
-                query_from_user_id = query_id,
-                intent_id = intent_id
-            )
+            faq = FaqStatistics(query_from_user_id=query_id, intent_id=intent_id)
             db.add(faq)
             db.commit()
 
@@ -953,14 +1088,22 @@ current_intent_id: int = None):
             db.rollback()
             print(f"Error updating FaqStatistics: {e}")
 
-    def create_training_qa(self, db: Session, intent_id: int, question: str, answer: str, target_audiences: List[str], created_by: int):
+    def create_training_qa(
+        self,
+        db: Session,
+        intent_id: int,
+        question: str,
+        answer: str,
+        target_audiences: List[str],
+        created_by: int,
+    ):
         qa = TrainingQuestionAnswer(
             question=question,
             answer=answer,
             intent_id=intent_id,
             target_audiences=target_audiences,
             created_by=created_by,
-            status="draft"
+            status="draft",
         )
         db.add(qa)
         db.commit()
@@ -975,18 +1118,20 @@ current_intent_id: int = None):
 
         if qa.status != "draft":
             raise Exception("Only draft QA can be approved")
-        
+
         intent = db.query(Intent).filter_by(intent_id=qa.intent_id).first()
         audience_names = qa.target_audiences or []
-        audiences = db.query(TargetAudience).filter(
-        TargetAudience.name.in_(audience_names)
-        ).all()
+        audiences = (
+            db.query(TargetAudience)
+            .filter(TargetAudience.name.in_(audience_names))
+            .all()
+        )
         if not audiences:
             raise Exception("No valid audiences found")
         audience_ids = [a.id for a in audiences]
         audience_names = [a.name for a in audiences]
         filtered_audience_names = [a.present_name for a in audiences]
-        
+
         # embed question (answer không embed)
         embedding = self.embeddings.embed_query(qa.question)
         point_id = str(uuid.uuid4())
@@ -1002,15 +1147,15 @@ current_intent_id: int = None):
                         "question_id": qa.question_id,
                         "intent_id": qa.intent_id,
                         "intent_name": intent.intent_name if intent else None,
-                        #MULTI AUDIENCE
+                        # MULTI AUDIENCE
                         "audience_ids": audience_ids,
                         "audience_names": filtered_audience_names,
                         "question_text": qa.question,
                         "answer_text": qa.answer,
-                        "type": "training_qa"
-                    }
+                        "type": "training_qa",
+                    },
                 )
-            ]
+            ],
         )
 
         # update DB
@@ -1019,13 +1164,10 @@ current_intent_id: int = None):
         qa.approved_at = datetime.now().date()  # Convert datetime to date
         db.commit()
 
-        return {
-            "postgre_question_id": qa.question_id,
-            "qdrant_question_id": point_id
-        }
+        return {"postgre_question_id": qa.question_id, "qdrant_question_id": point_id}
 
     def delete_training_qa(self, db: Session, qa_id: int):
-        
+
         qa = db.query(TrainingQuestionAnswer).filter_by(question_id=qa_id).first()
         if not qa:
             raise Exception("Training QA not found")
@@ -1037,12 +1179,11 @@ current_intent_id: int = None):
                 filter=models.Filter(
                     must=[
                         models.FieldCondition(
-                            key="question_id",
-                            match=models.MatchValue(value = qa_id)
+                            key="question_id", match=models.MatchValue(value=qa_id)
                         )
                     ]
                 )
-            )
+            ),
         )
 
         # Xóa trong DB
@@ -1051,7 +1192,15 @@ current_intent_id: int = None):
 
         return {"deleted_question_id": qa_id}
 
-    def create_document(self, db: Session, title: str, file_path: str, intend_id: int, target_audiences: List[str], created_by: int):
+    def create_document(
+        self,
+        db: Session,
+        title: str,
+        file_path: str,
+        intend_id: int,
+        target_audiences: List[str],
+        created_by: int,
+    ):
         new_doc = KnowledgeBaseDocument(
             title=title,
             file_path=file_path,
@@ -1066,7 +1215,14 @@ current_intent_id: int = None):
 
         return new_doc
 
-    def approve_document(self, db: Session, document_id: int, reviewer_id: int, intent_id: int, metadata: dict = None):
+    def approve_document(
+        self,
+        db: Session,
+        document_id: int,
+        reviewer_id: int,
+        intent_id: int,
+        metadata: dict = None,
+    ):
 
         doc = db.query(KnowledgeBaseDocument).filter_by(document_id=document_id).first()
         if not doc:
@@ -1076,9 +1232,11 @@ current_intent_id: int = None):
             raise Exception("Only draft documents can be approved")
         audience_names_input = doc.target_audiences or []
 
-        audiences = db.query(TargetAudience).filter(
-            TargetAudience.name.in_(audience_names_input)
-        ).all()
+        audiences = (
+            db.query(TargetAudience)
+            .filter(TargetAudience.name.in_(audience_names_input))
+            .all()
+        )
 
         if not audiences:
             raise Exception("No valid audiences found")
@@ -1089,7 +1247,7 @@ current_intent_id: int = None):
         missing = set(audience_names_input) - set(audience_names)
         if missing:
             raise Exception(f"Audience not found: {missing}")
-        
+
         abs_path = os.path.abspath(doc.file_path)
         print("OPEN FILE:", abs_path)
         intent = db.query(Intent).filter_by(intent_id=intent_id).first()
@@ -1098,25 +1256,24 @@ current_intent_id: int = None):
 
         # 3. Detect MIME type từ extension (DocumentProcessor cần)
         mime_map = {
-            ".pdf":  "application/pdf",
+            ".pdf": "application/pdf",
             ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            ".doc":  "application/msword",
+            ".doc": "application/msword",
             ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            ".xls":  "application/vnd.ms-excel",
+            ".xls": "application/vnd.ms-excel",
             ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            ".txt":  "text/plain",
+            ".txt": "text/plain",
         }
         ext = os.path.splitext(doc.file_path)[1].lower()
         mime_type = mime_map.get(ext, "text/plain")
         content = DocumentProcessor.extract_text(
-        file_content=file_bytes,
-        filename=os.path.basename(doc.file_path),
-        mime_type=mime_type
+            file_content=file_bytes,
+            filename=os.path.basename(doc.file_path),
+            mime_type=mime_type,
         )
         # --- Split text ---
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200
+            chunk_size=1000, chunk_overlap=200
         )
         chunks = text_splitter.split_text(content)
 
@@ -1155,10 +1312,10 @@ current_intent_id: int = None):
                             "intent_id": intent_id,
                             "intent_name": intent.intent_name if intent else None,
                             "metadata": metadata or {},
-                            "type": "document"
-                        }
+                            "type": "document",
+                        },
                     )
-                ]
+                ],
             )
 
             qdrant_ids.append(point_id)
@@ -1169,10 +1326,7 @@ current_intent_id: int = None):
         doc.reviewed_at = datetime.now().date()  # Convert datetime to date
         db.commit()
 
-        return {
-            "document_id": document_id,
-            "status": doc.status
-        }
+        return {"document_id": document_id, "status": doc.status}
 
     def delete_document(self, db: Session, document_id: int):
         doc = db.query(KnowledgeBaseDocument).filter_by(document_id=document_id).first()
@@ -1187,11 +1341,11 @@ current_intent_id: int = None):
                     must=[
                         models.FieldCondition(
                             key="document_id",
-                            match=models.MatchValue(value = document_id)
+                            match=models.MatchValue(value=document_id),
                         )
                     ]
                 )
-            )
+            ),
         )
 
         # Xóa chunks trong DB
@@ -1203,9 +1357,6 @@ current_intent_id: int = None):
         db.commit()
 
         return {"deleted_document_id": document_id}
-    
-
-
 
     # def add_document(self, document_id: int, content: str, intend_id: int, metadata: dict = None):
     #     text_splitter = RecursiveCharacterTextSplitter(
@@ -1213,13 +1364,13 @@ current_intent_id: int = None):
     #         chunk_overlap=200     # Overlap to preserve context
     #     )
     #     chunks = text_splitter.split_text(content)
-        
+
     #     chunk_ids = []
     #     for i, chunk in enumerate(chunks):
     #         # Embed chunk
     #         embedding = self.embeddings.embed_query(chunk)
     #         point_id = str(uuid.uuid4())
-            
+
     #         # Upsert to Qdrant
     #         self.qdrant_client.upsert(
     #             collection_name="knowledge_base_documents",
@@ -1239,9 +1390,9 @@ current_intent_id: int = None):
     #             ]
     #         )
     #         chunk_ids.append(point_id)
-        
+
     #     return chunk_ids
-    
+
     def cross_scope_search(self, query: str, top_k: int = 3):
         query_embedding = self.embeddings.embed_query(query)
 
@@ -1249,12 +1400,12 @@ current_intent_id: int = None):
         qa_results = self.qdrant_client.search(
             collection_name=self.training_qa_collection,
             query_vector=query_embedding,
-            limit=top_k
+            limit=top_k,
         )
-        
+
         if qa_results and qa_results[0].score >= 0.5:
             top = qa_results[0]
-           
+
             return {
                 "source": "training_qa",
                 "audience_ids": top.payload.get("audience_ids"),
@@ -1262,14 +1413,14 @@ current_intent_id: int = None):
                 "intent_id": top.payload.get("intent_id"),
                 "intent_name": top.payload.get("intent_name"),
                 "question": top.payload.get("question_text"),
-                "score": top.score
+                "score": top.score,
             }
 
         # ===== 2. SEARCH DOCUMENT =====
         doc_results = self.qdrant_client.search(
             collection_name=self.documents_collection,
             query_vector=query_embedding,
-            limit=top_k
+            limit=top_k,
         )
 
         if doc_results and doc_results[0].score >= 0.5:
@@ -1282,26 +1433,28 @@ current_intent_id: int = None):
                 "intent_id": top.payload.get("intent_id"),
                 "intent_name": top.payload.get("intent_name"),
                 "chunk_preview": top.payload.get("chunk_text", "")[:200],
-                "score": top.score
+                "score": top.score,
             }
 
         return None
 
-    def add_training_qa(self, db: Session, intent_id: int, question_text: str, answer_text: str):
+    def add_training_qa(
+        self, db: Session, intent_id: int, question_text: str, answer_text: str
+    ):
         """
         Add training Q&A pair vào Qdrant
-        
+
         Chỉ embed question, không embed answer:
         - Answer stored ở DB, retrieve khi match found
         - Question dùng để search/match
         - Tiết kiệm storage, tăng search speed
-        
+
         Args:
             question_id: Primary key của training Q&A
             intent_id: Intent này thuộc intent nào
             question_text: Question để embed
             answer_text: Answer (lưu ở DB, không embed)
-        
+
         Returns:
             embedding_id: Qdrant point ID
         """
@@ -1310,7 +1463,7 @@ current_intent_id: int = None):
             answer=answer_text,
             intent_id=1,
             created_by=1,
-            status='draft'  # New Q&A starts as draft, needs review before training
+            status="draft",  # New Q&A starts as draft, needs review before training
         )
         db.add(new_qa)
         db.commit()
@@ -1318,7 +1471,7 @@ current_intent_id: int = None):
         # Embed question text
         embedding = self.embeddings.embed_query(question_text)
         point_id = str(uuid.uuid4())
-        
+
         # Upsert vào training_qa collection
         # Metadata:
         # - question_id: Link về DB
@@ -1336,19 +1489,16 @@ current_intent_id: int = None):
                         "intent_id": intent_id,
                         "question_text": question_text,
                         "answer_text": answer_text,
-                        "type": "training_qa"
-                    }
+                        "type": "training_qa",
+                    },
                 )
-            ]
+            ],
         )
-        
+
         return {
             "postgre_question_id": new_qa.question_id,
-            "qdrant_question_id": point_id
+            "qdrant_question_id": point_id,
         }
-    
-    
-
 
     def search_documents(
         self,
@@ -1359,40 +1509,30 @@ current_intent_id: int = None):
         trace_id: Optional[str] = None,
         stage: str = "document_search",
     ):
-
         """
         Search documents (Fallback)
-        
+
         Fallback path: Tìm document chunks khi training Q&A không match
         - Query → Embed → Search documents collection
         - Return top_k chunks
         - LLM sẽ synthesize answer từ chunks
-        
+
         Args:
             query: User question
             top_k: Số chunks (lower score → fallback)
-        
+
         Returns:
             List of document chunks
         """
 
-        must_conditions = [
-            {
-                "key": "audience_ids",
-                "match": {"value": audience_ids}
-            }
-        ]
+        must_conditions = [{"key": "audience_ids", "match": {"value": audience_ids}}]
         if intent_id:
-            must_conditions.append({
-                "key": "intent_id",
-                "match": {"value": intent_id}
-            })
+            must_conditions.append({"key": "intent_id", "match": {"value": intent_id}})
 
-        
         start = time.perf_counter()
         self._debug_log(
             f"{stage}: start search_documents top_k={top_k} query_len={len(query or '')}",
-            trace_id
+            trace_id,
         )
 
         try:
@@ -1402,9 +1542,7 @@ current_intent_id: int = None):
                 collection_name=self.documents_collection,
                 query_vector=query_embedding,
                 limit=top_k,
-                query_filter={
-                    "must": must_conditions
-                }
+                query_filter={"must": must_conditions},
             )
 
             elapsed_ms = int((time.perf_counter() - start) * 1000)
@@ -1414,7 +1552,7 @@ current_intent_id: int = None):
             self._debug_log(
                 f"{stage}: success results={len(results)} top_score={top_score:.6f} "
                 f"top_document_id={top_document_id} elapsed_ms={elapsed_ms}",
-                trace_id
+                trace_id,
             )
             return results
         except Exception as e:
@@ -1422,7 +1560,7 @@ current_intent_id: int = None):
             self._debug_log(
                 f"{stage}: search_documents error type={type(e).__name__} "
                 f"message={e} elapsed_ms={elapsed_ms}",
-                trace_id
+                trace_id,
             )
             print(f"Qdrant search_documents timeout/error: {e}")
             return []
@@ -1492,10 +1630,10 @@ current_intent_id: int = None):
                 payload = getattr(top_match, "payload", {}) or {}
                 intent_id = payload.get("intent_id") or 0
                 confidence = float(getattr(top_match, "score", 0.0) or 0.0)
-                audience_ids = top_match.payload.get("audience_ids"),
-                audience_names = top_match.payload.get("audience_names"),
+                audience_ids = (top_match.payload.get("audience_ids"),)
+                audience_names = (top_match.payload.get("audience_names"),)
         except Exception as e:
-                print(f"build_document_search_result error: {e}")
+            print(f"build_document_search_result error: {e}")
         return {
             "response": doc_results,
             "response_source": "document",
@@ -1585,13 +1723,12 @@ Yêu cầu:
 
             self._debug_log(
                 f"citation_guard: allowed={allowed_ids} raw='{raw}' final={final_ids}",
-                trace_id
+                trace_id,
             )
             return final_ids
         except Exception as e:
             self._debug_log(
-                f"citation_guard: error type={type(e).__name__} message={e}",
-                trace_id
+                f"citation_guard: error type={type(e).__name__} message={e}", trace_id
             )
             return []
 
@@ -1619,7 +1756,6 @@ Yêu cầu:
             "không rõ",
         ]
         return any(marker in text for marker in markers)
-    
 
     def search_training_qa(
         self,
@@ -1630,40 +1766,30 @@ Yêu cầu:
         trace_id: Optional[str] = None,
         stage: str = "training_qa_search",
     ):
-
         """
         Search training Q&A (Priority 1)
-        
+
         Fast path: Tìm pre-approved answers
         - Query → Embed → Search training_qa collection
         - Return top_k matches
         - filter score > 0.8
-        
+
         Args:
             query: User question
             top_k: Số results (default 5)
-        
+
         Returns:
             List of search results with scores
         """
 
-        must_conditions = [
-            {
-                "key": "audience_ids",
-                "match": {"value": audience_ids}
-            }
-        ]
+        must_conditions = [{"key": "audience_ids", "match": {"value": audience_ids}}]
         if intent_id:
-            must_conditions.append({
-                "key": "intent_id",
-                "match": {"value": intent_id}
-            })
+            must_conditions.append({"key": "intent_id", "match": {"value": intent_id}})
 
-        
         start = time.perf_counter()
         self._debug_log(
             f"{stage}: start search_training_qa top_k={top_k} query_len={len(query or '')}",
-            trace_id
+            trace_id,
         )
 
         try:
@@ -1673,9 +1799,7 @@ Yêu cầu:
                 collection_name=self.training_qa_collection,
                 query_vector=query_embedding,
                 limit=top_k,
-                query_filter={
-                    "must": must_conditions
-                }
+                query_filter={"must": must_conditions},
             )
 
             elapsed_ms = int((time.perf_counter() - start) * 1000)
@@ -1685,7 +1809,7 @@ Yêu cầu:
             self._debug_log(
                 f"{stage}: success results={len(results)} top_score={top_score:.6f} "
                 f"top_question_id={top_question_id} elapsed_ms={elapsed_ms}",
-                trace_id
+                trace_id,
             )
             return results
         except Exception as e:
@@ -1693,35 +1817,39 @@ Yêu cầu:
             self._debug_log(
                 f"{stage}: search_training_qa error type={type(e).__name__} "
                 f"message={e} elapsed_ms={elapsed_ms}",
-                trace_id
+                trace_id,
             )
             print(f"Qdrant search_training_qa timeout/error: {e}")
             return []
 
-
-    def hybrid_search(self, audience_ids: int, query: str, intent_id: int = None, trace_id: Optional[str] = None):
-
+    def hybrid_search(
+        self,
+        audience_ids: int,
+        query: str,
+        intent_id: int = None,
+        trace_id: Optional[str] = None,
+    ):
         """
         Hybrid RAG Search Strategy
-        
+
         PRIORITY SYSTEM (Cascade):
         1. TIER 1 - Training Q&A (score > 0.8)
            - Highest confidence, direct answer
            - No LLM needed, fast response
-           
+
         2. TIER 2 - Training Q&A (0.7 < score <= 0.8)
            - Good match but not perfect
            - Use as primary answer + add document context
-           
+
         3. TIER 3 - Document Search + LLM Generation
            - No training Q&A match
            - Search documents, LLM synthesize
            - Lower confidence, show sources
-           
+
         4. TIER 4 - Fallback
            - Nothing found
            - Suggest live chat with officer
-        
+
         Returns:
             {
                 "response": str,
@@ -1732,18 +1860,15 @@ Yêu cầu:
                 "sources": list
             }
         """
-        
+
         # STEP 1: Search training Q&A
 
-        self._debug_log(
-            f"hybrid_search: start query_len={len(query or '')}",
-            trace_id
-        )
+        self._debug_log(f"hybrid_search: start query_len={len(query or '')}", trace_id)
         qa_results = self.search_training_qa(
             query,
-            audience_ids, 
+            audience_ids,
             intent_id,
-            top_k=3,
+            top_k=20,
             trace_id=trace_id,
             stage="hybrid_training_qa_search",
         )
@@ -1752,7 +1877,7 @@ Yêu cầu:
             print(f"score: + {qa_results[0].score}")
             self._debug_log(
                 f"hybrid_search: qa_results={len(qa_results)} top_score={qa_results[0].score:.6f}",
-                trace_id
+                trace_id,
             )
         else:
             self._debug_log("hybrid_search: qa_results=0", trace_id)
@@ -1770,17 +1895,16 @@ Yêu cầu:
                 "audience_ids": top_match.payload.get("audience_ids"),
                 "audience_names": top_match.payload.get("audience_names"),
                 "question_id": top_match.payload.get("question_id"),
-                "sources": []
+                "sources": [],
             }
-        
-        
+
         # TIER 2: No training Q&A match, try documents
 
         doc_results = self.search_documents(
             query,
-            audience_ids, 
+            audience_ids,
             intent_id,
-            top_k=5,
+            top_k=20,
             trace_id=trace_id,
             stage="hybrid_tier2_document_search",
         )
@@ -1788,18 +1912,19 @@ Yêu cầu:
         self._debug_log(
             f"hybrid_search: tier=document confidence={result.get('confidence', 0.0):.6f} "
             f"sources={len(result.get('sources', []))}",
-            trace_id
+            trace_id,
         )
         return result
 
-        
-    def _get_user_personality_and_academics(self, user_id: int, db: Session) -> Dict[str, Any]:
+    def _get_user_personality_and_academics(
+        self, user_id: int, db: Session
+    ) -> Dict[str, Any]:
         out = {
             "personality_summary": None,
             "riasec": None,
             "academic_summary": None,
             "gpa": None,
-            "subjects": {}
+            "subjects": {},
         }
 
         # --- RIASEC result ---
@@ -1820,26 +1945,26 @@ Yêu cầu:
                 "C": ri.score_conventional,
             }
             # `result` field = summary của bạn
-            out["personality_summary"] = ri.result or self._riasec_to_summary(out["riasec"])
+            out["personality_summary"] = ri.result or self._riasec_to_summary(
+                out["riasec"]
+            )
 
         # --- Academic scores ---
         score = (
-            db.query(AcademicScore)
-            .filter(AcademicScore.customer_id == user_id)
-            .first()
+            db.query(AcademicScore).filter(AcademicScore.customer_id == user_id).first()
         )
 
         if score:
             subj_map = {
-            "math": score.math,
-            "literature": score.literature,
-            "english": score.english,
-            "physics": score.physics,
-            "chemistry": score.chemistry,
-            "biology": score.biology,
-            "history": score.history,
-            "geography": score.geography,
-        }
+                "math": score.math,
+                "literature": score.literature,
+                "english": score.english,
+                "physics": score.physics,
+                "chemistry": score.chemistry,
+                "biology": score.biology,
+                "history": score.history,
+                "geography": score.geography,
+            }
 
             # simple GPA = average score
             valid_scores = [v for v in subj_map.values() if v is not None]
@@ -1847,61 +1972,60 @@ Yêu cầu:
 
             out["subjects"] = subj_map
             out["gpa"] = gpa
-            out["academic_summary"] = (
-                f"GPA xấp xỉ {gpa}. Các môn: " +
-                ", ".join([f"{k}: {v}" for k, v in subj_map.items()])
+            out["academic_summary"] = f"GPA xấp xỉ {gpa}. Các môn: " + ", ".join(
+                [f"{k}: {v}" for k, v in subj_map.items()]
             )
             print(out["academic_summary"])
         return out
 
-    def _riasec_to_summary(self, ri_map: Dict[str,int]) -> str:
+    def _riasec_to_summary(self, ri_map: Dict[str, int]) -> str:
         # very small helper - bạn có thể mở rộng
         order = sorted(ri_map.items(), key=lambda x: -x[1])
         top = order[0][0] if order else None
         return f"Ưu thế RIASEC: {', '.join([f'{k}={v}' for k,v in ri_map.items()])}. Chính: {top}."
 
-    def _get_all_majors_from_db(self, db: Session, limit: int = 200) -> List[Dict[str,Any]]:
+    def _get_all_majors_from_db(
+        self, db: Session, limit: int = 200
+    ) -> List[Dict[str, Any]]:
         """
         Lấy danh sách majors
         """
         rows = db.query(Major).order_by(Major.major_name).limit(limit).all()
         majors = []
         for r in rows:
-            majors.append({
-                "major_id": r.major_id,
-                "major_name": r.major_name,
-            })
+            majors.append(
+                {
+                    "major_id": r.major_id,
+                    "major_name": r.major_name,
+                }
+            )
         return majors
 
-    def _get_all_majors_and_specialization_from_db(self, db: Session, limit: int = 200) -> List[Dict[str, Any]]:
+    def _get_all_majors_and_specialization_from_db(
+        self, db: Session, limit: int = 200
+    ) -> List[Dict[str, Any]]:
         """
         Lấy danh sách majors kèm theo danh sách specializations
         """
-        rows = (
-            db.query(Major)
-            .order_by(Major.major_name)
-            .limit(limit)
-            .all()
-        )
+        rows = db.query(Major).order_by(Major.major_name).limit(limit).all()
 
         majors = []
         for r in rows:
-            majors.append({
-                "major_id": r.major_id,
-                "major_name": r.major_name,
-                "specializations": [
-                    {
-                        "specialization_id": s.specialization_id,
-                        "specialization_name": s.specialization_name
-                    }
-                    for s in r.specializations
-                ]
-            })
+            majors.append(
+                {
+                    "major_id": r.major_id,
+                    "major_name": r.major_name,
+                    "specializations": [
+                        {
+                            "specialization_id": s.specialization_id,
+                            "specialization_name": s.specialization_name,
+                        }
+                        for s in r.specializations
+                    ],
+                }
+            )
 
         return majors
-    
-    
 
-    
 
 langchain_service = TrainingService()
