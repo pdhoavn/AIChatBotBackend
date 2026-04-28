@@ -141,8 +141,6 @@ async def websocket_chat(websocket: WebSocket):
                         session_id,
                         user_id,
                         intent_id,
-                        audience_id,
-                        intent_id_from_client,
                         message,
                     ):
                         await websocket.send_text(
@@ -235,9 +233,7 @@ async def websocket_chat(websocket: WebSocket):
                     session_id,
                     user_id,
                     intent_id,
-                    audience_id,
                     message,
-                    intent_id_from_client,
                 ):
                     piece = getattr(chunk, "content", str(chunk))
                     answer_text += piece

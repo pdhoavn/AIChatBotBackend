@@ -10,10 +10,15 @@ from app.services.training_service import TrainingService
 router = APIRouter()
 
 
-@router.get("/suggestions", response_model=List[schemas.SuggestionQuestionResponse])
-def get_suggestions(
+@router.get(
+    "/suggestions-from-training",
+    response_model=List[schemas.SuggestionTrainingResponse],
+)
+def get_suggestions_from_training_api(
     target_audience_id: int = Query(...),
     intent_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
 ):
-    return TrainingService.get_suggestion_questions(db, target_audience_id, intent_id)
+    return TrainingService.get_suggestion_from_training(
+        db=db, target_audience_id=target_audience_id, intent_id=intent_id
+    )

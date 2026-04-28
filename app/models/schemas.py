@@ -13,12 +13,16 @@ class TokenData(BaseModel):
     email: Optional[str] = None
     user_id: Optional[int] = None
 
+
 class TargetAudienceSimple(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
+
     class Config:
         orm_mode = True
+
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
@@ -26,7 +30,7 @@ class LoginRequest(BaseModel):
 
 class UserProfileResponse(BaseModel):
     user_id: int
-    full_name: str 
+    full_name: str
     email: str
     phone_number: Optional[str]
     permission: Optional[List[str]]
@@ -89,6 +93,8 @@ class PermissionChangeRequest(BaseModel):
 class PermissionRevokeRequest(BaseModel):
     user_id: int
     permission_ids: List[int]
+
+
 class BanUserRequest(BaseModel):
     user_id: int
 
@@ -162,7 +168,7 @@ class AcademicScoreCreate(AcademicScoreBase):
 class AcademicScoreResponse(AcademicScoreBase):
     score_id: int
     customer_id: int
-    
+
     class Config:
         orm_mode = True
 
@@ -225,6 +231,7 @@ class CourseResponse(CourseBase):
 
 class MajorBase(BaseModel):
     major_name: str
+
 
 class MajorResponse(MajorBase):
     major_id: int
@@ -301,13 +308,16 @@ class IntentResponse(IntentBase):
     class Config:
         orm_mode = True
 
+
 class IntentResponse2(BaseModel):
     intent_id: int
     intent_name: str
     description: Optional[str]
     target_audience_id: int
+
     class Config:
         orm_mode = True
+
 
 class TrainingQuestionRequest(BaseModel):
     question: str
@@ -352,6 +362,8 @@ class SuggestionQuestionResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+
 # ================= KNOWLEDGE BASE =================
 class KnowledgeBaseDocumentBase(BaseModel):
     title: str
@@ -425,15 +437,25 @@ class ChatSessionResponse(ChatSessionBase):
         orm_mode = True
 
 
+class SuggestionTrainingResponse(BaseModel):
+    question: str
+    intent_id: Optional[int]
+    created_at: Optional[date]
+
+    class Config:
+        orm_mode = True
+
+
 # ================= SPECIALIZATION =================
 class SpecializationResponse(BaseModel):
     specialization_id: int
     specialization_name: str
     major_id: Optional[int]
-    articles: List['ArticleResponse'] = []
+    articles: List["ArticleResponse"] = []
 
     class Config:
         orm_mode = True
+
 
 # ================= ARTICLE =================
 
@@ -447,6 +469,7 @@ class ArticleCreate(BaseModel):
     major_id: Optional[int] = None
     specialization_id: Optional[int] = None
 
+
 class ArticleUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
@@ -456,9 +479,11 @@ class ArticleUpdate(BaseModel):
     major_id: Optional[int] = None
     specialization_id: Optional[int] = None
 
+
 class ArticleStatusUpdate(BaseModel):
     status: str  # "draft", "published", "rejected" or "cancelled"
     note: Optional[str] = None
+
 
 class ArticleResponse(BaseModel):
     article_id: int
@@ -507,8 +532,10 @@ class RiasecResultBase(BaseModel):
     score_conventional: int
     result: str
 
+
 class RiasecResultCreate(RiasecResultBase):
     pass
+
 
 class RiasecResult(RiasecResultBase):
     result_id: int
@@ -517,19 +544,23 @@ class RiasecResult(RiasecResultBase):
     class Config:
         orm_mode = True
 
+
 # ================= TEMPLATE =================
 class TemplateQABase(BaseModel):
     question: str
     answer: str
     order_position: int = 0
 
+
 class TemplateQACreate(TemplateQABase):
     pass
+
 
 class TemplateQAUpdate(BaseModel):
     question: Optional[str] = None
     answer: Optional[str] = None
     order_position: Optional[int] = None
+
 
 class TemplateQAResponse(TemplateQABase):
     qa_id: int
@@ -543,13 +574,16 @@ class TemplateBase(BaseModel):
     template_name: str
     description: Optional[str] = None
 
+
 class TemplateCreate(TemplateBase):
     qa_pairs: List[TemplateQACreate]
+
 
 class TemplateUpdate(BaseModel):
     template_name: Optional[str] = None
     description: Optional[str] = None
     qa_pairs: Optional[List[TemplateQAUpdate]] = None
+
 
 class TemplateDelete(BaseModel):
     template_ids: List[int]

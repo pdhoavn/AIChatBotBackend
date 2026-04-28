@@ -479,9 +479,7 @@ class TrainingService:
         session_id: int,
         user_id: int,
         intent_id: int,
-        target_audience_id: int,
         message: str,
-        intent_id_from_client: int = 0,
     ):
         db = SessionLocal()
 
@@ -511,16 +509,6 @@ class TrainingService:
 
                 db.add(user_msg)
                 db.flush()
-            current_quey = QuestionLog(
-                question=message,
-                created_at=datetime.now(),
-                intent_id=(
-                    intent_id_from_client if intent_id_from_client is not None else 0
-                ),
-                target_audience_id=target_audience_id,
-            )
-            db.add(current_quey)
-            db.flush()
             memory = memory_service.get_memory(session_id)
             mem_vars = memory.load_memory_variables({})
             chat_history = mem_vars.get("chat_history", "")
@@ -585,8 +573,6 @@ class TrainingService:
         session_id: int = 1,
         user_id: int = 1,
         intent_id: int = 1,
-        target_audience_id: int = 1,
-        intent_id_from_client: int = 0,
         message: str = "",
     ):
         db = SessionLocal()
@@ -623,16 +609,6 @@ class TrainingService:
                 db.add(user_msg)
                 db.flush()
 
-            current_quey = QuestionLog(
-                question=message,
-                created_at=datetime.now(),
-                intent_id=(
-                    intent_id_from_client if intent_id_from_client is not None else 0
-                ),
-                target_audience_id=target_audience_id,
-            )
-            db.add(current_quey)
-            db.flush()
             memory = memory_service.get_memory(session_id)
             mem_vars = memory.load_memory_variables({})
             chat_history = mem_vars.get("chat_history", "")
@@ -998,22 +974,30 @@ class TrainingService:
         finally:
             db.close()
 
-    def get_suggestion_questions(
+    def get_suggestion_from_training(
         db: Session, target_audience_id: int, intent_id: Optional[int] = None
-    ) -> List[QuestionLog]:
+    ):
 
-        query = db.query(QuestionLog).filter(
-            QuestionLog.target_audience_id == target_audience_id
+        query = db.query(TrainingQuestionAnswer).filter(
+            TrainingQuestionAnswer.status == "approved"
+        )
+        target = (
+            db.query(TargetAudience)
+            .filter(TargetAudience.id == target_audience_id)
+            .first()
         )
 
-        if intent_id is not None:
-            query = query.filter(QuestionLog.intent_id == intent_id)
+        if not target:
+            return []
 
-        query = query.order_by(
-            QuestionLog.question, QuestionLog.created_at.desc()
-        ).distinct(QuestionLog.question)
+        # filter theo audience
+        query = query.filter(TrainingQuestionAnswer.target_audiences.any(target.name))
 
-        return query.limit(5).all()
+        # filter theo intent nếu có
+        if intent_id is not None and intent_id != 0:
+            query = query.filter(TrainingQuestionAnswer.intent_id == intent_id)
+
+        return query.order_by(TrainingQuestionAnswer.created_at.desc()).limit(5).all()
 
     def add_interaction_and_faq_for_intent_0(
         self,
