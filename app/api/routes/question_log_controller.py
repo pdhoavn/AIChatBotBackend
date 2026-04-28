@@ -11,7 +11,7 @@ router = APIRouter()
 
 
 @router.get(
-    "/suggestions-from-training",
+    "/suggestions",
     response_model=List[schemas.SuggestionTrainingResponse],
 )
 def get_suggestions_from_training_api(
