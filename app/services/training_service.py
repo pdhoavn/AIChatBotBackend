@@ -576,11 +576,7 @@ class TrainingService:
     ):
         db = SessionLocal()
         try:
-            print(
-                ">>> intent_id_from_client:",
-                intent_id_from_client,
-                type(intent_id_from_client),
-            )
+
             if not user_id:
                 # 🧩 1. Lưu tin nhắn người dùng
                 user_msg = ChatInteraction(
@@ -1851,7 +1847,7 @@ Yêu cầu:
             query,
             audience_ids,
             intent_id,
-            top_k=20,
+            top_k=5,
             trace_id=trace_id,
             stage="hybrid_training_qa_search",
         )
@@ -1887,7 +1883,7 @@ Yêu cầu:
             query,
             audience_ids,
             intent_id,
-            top_k=20,
+            top_k=5,
             trace_id=trace_id,
             stage="hybrid_tier2_document_search",
         )

@@ -167,7 +167,7 @@ async def websocket_chat(websocket: WebSocket):
                         enriched_query,
                         audience_ids=audience_id,
                         intent_id=intent_id_from_client,
-                        top_k=20,
+                        top_k=5,
                         trace_id=trace_id,
                         stage="document_recheck_search",
                     )
@@ -203,7 +203,7 @@ async def websocket_chat(websocket: WebSocket):
                     enriched_query,
                     audience_ids=audience_id,
                     intent_id=intent_id_from_client,
-                    top_k=20,
+                    top_k=5,
                     trace_id=trace_id,
                     stage="document_recheck_search",
                 )
