@@ -1,0 +1,141 @@
+PMG201c - Practical Exam 1 (Fall 2025)
+You have developed a unique, niche consumer product, and your project is to validate its market viability through a temporary pop-up retail operation. The project requires securing permits, designing and building the display, managing inventory, training student sales staff, and achieving a sales goal of $15,000 in gross revenue. The pop-up operation must run for two consecutive weeks. The setup and operational costs (excluding product manufacturing cost) are strictly limited to $1500, and the budget constraint demands that the total inventory shrinkage/loss be kept below 2% of the total inventory value. For quality, the customer satisfaction rating, measured by post-purchase surveys, must exceed 90% positive feedback regarding product quality and the retail experience.
+Request 1 (20%): develop a narrative charter statement that includes the following details
+1. Project name,
+2. Justifications (purpose & reasons to implement this project),
+3. Project constraints, in terms of scope, time, cost/budget, and quality.
+Request 2 (20%): provide at least five main cost/budget items. Each cost/budget item, you need to provide following details: name, description, estimation along with the way to estimate (how to estimate, person in charged,..)
+Request 3 (30%): develop communication plan for the project where you:
+1. Define at three project stakeholders (project-internal, organization-internal, external)
+2. Create a communication plan for each of those stakeholders and the communications you believe they should receive. Each communication needs to include following details: information, purpose, frequency, method or format, responsible.
+Request 4 (30%): identify three project risks by listing out the risk title/name, description, possible impacts (in term of scope or quality, time, and cost), and relevant risk response plans (mitigation, contingency).
+Request 1
+1. Project Name
+Niche Consumer Product Market Validation via Pop-up Retail
+2. Project Justifications (Purpose & Reasons)
+The purpose of this project is to validate the market viability of a unique, niche consumer product through a real-world selling environment.
+Instead of relying solely on surveys or online testing, the project uses a temporary pop-up retail operation to directly observe customer behavior, purchasing decisions, and satisfaction.
+This project is implemented to:
+Test real customer demand and willingness to pay for the product.
+Collect direct feedback on product quality and retail experience.
+Evaluate operational feasibility, including inventory management and sales staff performance.
+Reduce long-term business risk before committing to large-scale production or permanent retail investment.
+3. Project Constraints
+a. Scope Constraints
+The project scope is limited to planning, setting up, and operating one temporary pop-up retail store.
+Included activities: securing permits, designing and building the product display, managing inventory, training student sales staff, conducting sales, and collecting customer feedback.
+Excluded from scope: product manufacturing, long-term retail operations, online sales platforms, and post-project marketing campaigns beyond feedback analysis.
+b. Time Constraints
+The pop-up retail operation must run for two consecutive weeks only.
+All preparation activities, including permits, display setup, and staff training, must be completed before the opening date.
+The project must conclude immediately after the two-week operation and post-sale evaluation.
+c. Cost / Budget Constraints
+Total setup and operational costs (excluding product manufacturing costs) are strictly capped at USD 1,500.
+All expenses related to permits, display materials, staffing support, and operations must remain within this fixed budget.
+No budget overrun is allowed.
+d. Quality Constraints
+Inventory shrinkage or loss must be kept below 2% of total inventory value.
+Customer satisfaction, measured through post-purchase surveys, must achieve more than 90% positive feedback related to product quality and retail experience.
+Sales staff must be adequately trained to ensure consistent service quality throughout the operation.
+
+Request 2
+The project budget focuses on controlling setup and operational costs while ensuring efficient execution during the two-week pop-up retail operation.
+1. Permit & Licensing Cost
+Description: This cost covers the fees required to obtain temporary retail permits from local authorities, allowing the pop-up store to operate legally.
+Estimated Cost: USD 200
+Person in Charge: Project Manager
+2. Display & Booth Setup Cost
+Description: This cost includes designing, constructing, and decorating the pop-up booth, such as tables, shelves, banners, lighting, signage, and basic visual materials.
+Estimated Cost: USD 400
+Person in Charge: Project Manager in coordination with the Design and Operations Lead
+3. Inventory Handling & Storage Cost
+Description: This cost covers inventory storage materials, security locks, tagging systems, and loss-prevention tools required to ensure inventory shrinkage remains below 2%.
+Estimated Cost: USD 300
+Person in Charge: Inventory Manager under the supervision of the Project Manager
+4. Sales Staff Training Cost
+Description: This cost relates to training student sales staff, including training materials, printed manuals, and rehearsal sessions prior to store opening to ensure consistent service quality.
+Estimated Cost: USD 200
+Person in Charge: Project Manager and Sales Team Lead
+5. Operational & Daily Running Costs
+Description: This category includes daily operational expenses such as utilities, cleaning supplies, minor maintenance items, and transaction-related costs during the two-week operation.
+Estimated Cost: USD 300
+Person in Charge: Operations Coordinator reporting to the Project Manager
+Request 3
+1. Project Stakeholders
+Project-internal stakeholder: Project Team (Project Manager, Inventory Staff, Sales Staff, Setup Team)
+Organization-internal stakeholder: Project Sponsor / Business Owner
+External stakeholder: Customers (Pop-up Store Visitors)
+2. Communication Plans
+A. Project Team
+Information: Project schedule, task assignments, inventory status, daily sales targets
+Purpose: Ensure clear responsibilities, smooth coordination, and progress monitoring
+Frequency: Weekly during preparation; daily during the pop-up operation
+Method / Format: Face-to-face meetings, messaging groups, task boards
+Responsible: Project Manager
+B. Project Sponsor / Business Owner
+Information: Project progress, budget usage, revenue performance, key risks
+Purpose: Report project status and obtain approval for major decisions or changes
+Frequency: Weekly reports and final summary after the two-week operation
+Method / Format: Email reports and brief meetings
+Responsible: Project Manager
+C. Customers
+Information: Product features, pricing, promotions, post-purchase satisfaction surveys
+Purpose: Encourage purchases and collect feedback on product quality and retail experience
+Frequency: Throughout the pop-up operation
+Method / Format: In-store communication and QR-based surveys
+Responsible: Sales Staff and Project Manager
+Request 4
+Risk 1: Low Sales Performance
+Risk Description:
+Sales revenue falls below the USD 15,000 target due to low customer traffic or insufficient product attractiveness.
+Possible Impacts:
+Scope / Quality: Failure to validate market feasibility
+Time: Inability to recover lost sales due to the fixed two-week pop-up duration
+Cost: Operational expenses cannot be recovered through sales revenue
+Probability: Medium (3)
+Impact: High (4)
+Risk Score: 3 × 4 = 12 (High)
+Mitigation Plan:
+Select a high-traffic pop-up retail location
+Train sales staff in product knowledge and consultative selling techniques
+Introduce promotional campaigns and bundled product offers
+Contingency Plan:
+Apply short-term price discounts if sales performance remains low
+Intensify selling activities during peak customer hours
+Focus sales efforts on best-selling products
+Risk 2: Inventory Loss / Shrinkage Exceeding 2%
+Risk Description:
+Inventory loss caused by theft, damage, or mishandling results in shrinkage exceeding the permitted 2% limit.
+Possible Impacts:
+Scope / Quality: Inventory control and quality requirements are not met
+Time: Additional time required for inventory reconciliation and investigation
+Cost: Increased operational costs and reduced profitability
+Probability: Medium (3)
+Impact: High (4)
+Risk Score: 3 × 4 = 12 (High)
+Mitigation Plan:
+Perform daily inventory counts and reconciliation
+Clearly assign inventory management responsibilities
+Restrict physical access to storage and inventory areas
+Contingency Plan:
+Temporarily suspend the sale of high-risk inventory items
+Adjust pricing strategies to partially offset inventory losses
+Increase monitoring and supervision at sales counters
+Risk 3: Low Customer Satisfaction Rating
+Risk Description:
+Customer dissatisfaction with product quality or the retail experience leads to positive feedback falling below the 90% threshold.
+Possible Impacts:
+Scope / Quality: Project quality objectives are not achieved
+Time: Additional effort and time required to resolve customer complaints
+Cost: Extra costs associated with refunds, exchanges, or customer incentives
+Probability: Low to Medium (2)
+Impact: Major (4)
+Risk Score: 2 × 4 = 8 (Medium)
+Mitigation Plan:
+Provide customer service training to all sales staff
+Conduct quality inspections on products prior to sale
+Design a clear, intuitive, and customer-friendly store layout
+Contingency Plan:
+Resolve customer complaints immediately at the point of sale
+Offer product exchanges, refunds, or goodwill incentives
+Adjust sales and service processes based on customer feedback
