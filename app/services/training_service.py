@@ -22,7 +22,6 @@ from app.models.entities import (
     KnowledgeBaseDocument,
     Major,
     ParticipateChatSession,
-    QuestionLog,
     RiasecResult,
     TargetAudience,
     TrainingQuestionAnswer,
