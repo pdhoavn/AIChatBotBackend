@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.models.database import engine
 from app.api.routes import (
     knowledge_base_controller,
+    document_detail_controller,
     chat_controller,
     auth_controller,
     intent2_controller,
@@ -158,9 +159,8 @@ app.include_router(
     tags=["Specializations"],
 )
 app.include_router(article_controller.router, prefix="/articles", tags=["Articles"])
-app.include_router(
-    knowledge_base_controller.router, prefix="/knowledge", tags=["Knowledge Base"]
-)
+app.include_router(knowledge_base_controller.router, prefix="/knowledge", tags=["Knowledge Base"])
+app.include_router(document_detail_controller.router, prefix="/knowledge", tags=["Document Detail"])
 app.include_router(chat_controller.router, prefix="/chat", tags=["Chat"])
 app.include_router(riasec_controller.router, prefix="/riasec", tags=["RIASEC"])
 app.include_router(

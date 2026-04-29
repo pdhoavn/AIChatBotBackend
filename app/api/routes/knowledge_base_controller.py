@@ -9,7 +9,7 @@ from fastapi import (
     Query,
 )
 from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, defer
 from typing import List, Optional
 from pathlib import Path
 import os
@@ -243,13 +243,15 @@ async def upload_document(
     try:
         service = TrainingService()
         print("[9] Đang lưu vào Database...", flush=True)
+        doc_title = title.strip() if title and title.strip() else (file.filename or "Untitled")
         doc = service.create_document(
             db=db,
-            title=file.filename,
-            file_path=str(file_path),  # <-- file text chứ không phải file gốc
+            title=doc_title,
+            file_path=str(file_path),
             intend_id=intend_id,
             target_audiences=target_audiences,
             created_by=current_user_id,
+            content=extracted_text,
         )
 
         # save extracted text for approval stage
@@ -334,9 +336,10 @@ def get_all_documents(
     - All users can see all documents regardless of status
     - Use ?status= query parameter to filter by specific status
     """
-    # Build query with intent joined to avoid N+1
+    # Build query with intent joined to avoid N+1, defer heavy content column
     query = db.query(entities.KnowledgeBaseDocument).options(
-        joinedload(entities.KnowledgeBaseDocument.intent)
+        joinedload(entities.KnowledgeBaseDocument.intent),
+        defer(entities.KnowledgeBaseDocument.content)
     )
 
     # Apply status filter if provided
@@ -563,13 +566,12 @@ def get_pending_documents(
     Get all documents pending review (status=draft).
     Only Admin or ConsultantLeader can access this endpoint.
     """
-    documents = (
-        db.query(entities.KnowledgeBaseDocument)
-        .options(joinedload(entities.KnowledgeBaseDocument.intent))
-        .filter(entities.KnowledgeBaseDocument.status == "draft")
-        .all()
-    )
-
+    documents = db.query(entities.KnowledgeBaseDocument).options(
+        joinedload(entities.KnowledgeBaseDocument.intent),
+        defer(entities.KnowledgeBaseDocument.content)
+    ).filter(
+        entities.KnowledgeBaseDocument.status == 'draft'
+    ).all()
     return [
         {
             "document_id": doc.document_id,

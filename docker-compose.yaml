@@ -4,7 +4,7 @@ services:
   # --- 1. FastAPI Service ---
   backend:
     build: .
-    image: dino5020/chatbot_backend:latest
+    image: hoapham/chatbot_backend:latest
     container_name: chatbot_backend
     command: gunicorn --bind 0.0.0.0:8000 --workers 1 --worker-class uvicorn.workers.UvicornWorker --timeout 120 app.main:app
     ports:
@@ -14,10 +14,10 @@ services:
       - ./uploads:/code/uploads
     environment:
       # Kết nối Database (Lưu ý: host là 'db', không phải localhost)
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-db:5432/${POSTGRES_DB}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@14.161.1.28:5432/${POSTGRES_DB}
 
       # Kết nối Qdrant (Lưu ý: host là 'qdrant')
-      - QDRANT_HOST=qdrant
+      - QDRANT_HOST=14.161.1.28
       - QDRANT_PORT=6333
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
@@ -38,8 +38,8 @@ services:
 
 
   frontend:
-    build: ../../testcode_Ai_front/AIChatBotFontend
-    image: dino5020/react_frontend:latest
+    build: ../../project_ai_fe/AIChatBotFontend
+    image: hoapham/react_frontend:latest
     container_name: react_frontend
     ports:
       - "3000:80" # Mở cổng 80 ra ngoài internet
