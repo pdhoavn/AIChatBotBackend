@@ -130,7 +130,9 @@ def get_document_chunks(
                 collection_name="knowledge_base_documents",
                 document_id=document_id,
                 limit=1000,
-            ).sort(key=lambda x: x.get("chunk_index") or 0)
+            )
+            if points:
+                points.sort(key=lambda x: x.get("chunk_index") or 0)
             return [
                 {
                     "chunk_id": None,
