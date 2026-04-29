@@ -441,7 +441,6 @@ class DocumentDetailResponse(BaseModel):
     intent_id: Optional[int] = None
     intent_name: Optional[str] = None
     content_char_count: int
-    chunk_count: int
     qdrant_points_count: int
 
     class Config:
