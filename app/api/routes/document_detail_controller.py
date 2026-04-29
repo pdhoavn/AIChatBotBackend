@@ -130,7 +130,7 @@ def get_document_chunks(
                 collection_name="knowledge_base_documents",
                 document_id=document_id,
                 limit=1000,
-            )
+            ).sort()
             return [
                 {
                     "chunk_id": None,
