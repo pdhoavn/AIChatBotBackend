@@ -432,11 +432,11 @@ class DocumentDetailResponse(BaseModel):
     file_path: str
     category: Optional[str] = None
     status: Optional[str] = "draft"
-    created_at: Optional[date] = None
-    updated_at: Optional[date] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     created_by: Optional[int] = None
     reviewed_by: Optional[int] = None
-    reviewed_at: Optional[date] = None
+    reviewed_at: Optional[datetime] = None
     target_audiences: Optional[List[str]] = []
     intent_id: Optional[int] = None
     intent_name: Optional[str] = None
