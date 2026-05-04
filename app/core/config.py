@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: str
     CLOUDINARY_API_SECRET: str
 
+    # OCR / Tesseract
+    TESSERACT_CMD_PATH: str = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

@@ -375,6 +375,7 @@ class KnowledgeBaseDocumentBase(BaseModel):
     reject_reason: Optional[str] = None
     target_audiences: Optional[List[str]] = []
     content: Optional[str] = None
+    is_ocr: Optional[bool] = False
 
 
 class KnowledgeBaseDocumentResponse(KnowledgeBaseDocumentBase):
@@ -385,6 +386,7 @@ class KnowledgeBaseDocumentResponse(KnowledgeBaseDocumentBase):
     reject_reason: Optional[str] = None
     target_audiences: Optional[List[str]] = []
     content: Optional[str] = None
+    is_ocr: Optional[bool] = False
     intent_id: Optional[int] = None
     intent_name: Optional[str] = None
 

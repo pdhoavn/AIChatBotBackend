@@ -272,6 +272,82 @@ async def upload_document(
     }
 
 
+@router.post("/upload/document-ocr")
+async def upload_document_ocr(
+    intend_id: int = Query(...),
+    file: UploadFile = File(...),
+    title: str = Form(None),
+    category: str = Form(None),
+    target_audiences: List[str] = Form([]),
+    current_user_id: int = Form(1),
+    db: Session = Depends(get_db)
+):
+    """
+    Upload a scanned document / image and OCR its content.
+    Saves to DB with is_ocr = 1.
+    """
+    print(f"[OCR] BẮT ĐẦU REQUEST. Filename: {file.filename}", flush=True)
+
+    # STEP 1: Validate file
+    ext = Path(file.filename).suffix.lower()
+    if ext != '.pdf':
+        raise HTTPException(status_code=400, detail="OCR only supports PDF files")
+
+    # STEP 2: Read file
+    file_content = await file.read()
+    if len(file_content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 50MB)")
+
+    # STEP 3: OCR text
+    try:
+        print("[OCR] Đang OCR file...", flush=True)
+        extracted_text = documentProcessor.extract_text_ocr(file_content, file.filename)
+        if not extracted_text:
+            raise HTTPException(status_code=422, detail="Cannot extract text via OCR")
+        print(f"[OCR] OCR XONG. Kết quả dài: {len(extracted_text)}", flush=True)
+    except Exception as e:
+        print(f"[OCR] Lỗi OCR: {e}", flush=True)
+        raise HTTPException(status_code=422, detail=f"OCR error: {str(e)}")
+
+    # STEP 4: Save file to disk
+    try:
+        upload_dir = Path("uploads")
+        upload_dir.mkdir(exist_ok=True)
+        unique_filename = f"{uuid.uuid4()}_{file.filename}"
+        file_path = upload_dir / unique_filename
+        with open(file_path, "wb") as f:
+            f.write(file_content)
+        print(f"[OCR] Lưu file XONG tại: {file_path}", flush=True)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+
+    # STEP 5: Save DB
+    try:
+        service = TrainingService()
+        doc_title = title.strip() if title and title.strip() else (file.filename or "Untitled")
+        doc = service.create_document(
+            db=db,
+            title=doc_title,
+            file_path=str(file_path),
+            intend_id=intend_id,
+            target_audiences=target_audiences,
+            created_by=current_user_id,
+            content=extracted_text,
+            is_ocr=True,
+        )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"DB error: {str(e)}")
+
+    return {
+        "message": "OCR document uploaded as draft. Waiting for approval.",
+        "document_id": doc.document_id,
+        "intend_id": doc.intend_id,
+        "status": doc.status,
+        "is_ocr": doc.is_ocr,
+    }
+
+
 @router.get("/training_questions", response_model=List[TrainingQuestionResponse])
 def get_all_training_questions(
     status: Optional[str] = Query(

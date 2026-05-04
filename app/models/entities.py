@@ -501,6 +501,7 @@ class KnowledgeBaseDocument(Base):
     reject_reason = Column(String, nullable=True)
     target_audiences = Column(ARRAY(String), default=[])
     content = Column(Text, nullable=True)
+    is_ocr = Column(Boolean, default=False)
 
     intent = relationship('Intent', back_populates='document')
     # Relationships

@@ -367,6 +367,39 @@ class DocumentProcessor:
         return text
     
     @staticmethod
+    def extract_text_ocr(file_content: bytes, filename: str) -> str:
+        """
+        OCR extraction for scanned PDFs using pymupdf + pytesseract.
+
+        Args:
+            file_content: Raw file bytes
+            filename: Filename
+
+        Returns:
+            OCR'd text
+        """
+        import fitz
+        import pytesseract
+        from PIL import Image
+        from app.core.config import settings
+
+        pytesseract.pytesseract.tesseract_cmd = settings.TESSERACT_CMD_PATH
+
+        text_parts = []
+        doc = fitz.open(stream=file_content, filetype="pdf")
+
+        for idx, page in enumerate(doc):
+            pix = page.get_pixmap(dpi=300)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            page_text = pytesseract.image_to_string(img, lang="eng+vie")
+            if page_text.strip():
+                text_parts.append(f"\n--- Page {idx + 1} ---\n{page_text}")
+
+        doc.close()
+        result = "\n\n".join(text_parts)
+        return DocumentProcessor.clean_text(result) if result else ""
+
+    @staticmethod
     def clean_text(text: str) -> str:
         """
         Clean extracted text
