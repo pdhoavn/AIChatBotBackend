@@ -293,14 +293,28 @@ class TrainingService:
         self, enriched_query: str, matched_question: str, answer: str
     ) -> bool:
         prompt = f"""
-        Bạn là chuyên gia đánh giá giữa câu hỏi tìm kiếm, câu hỏi trong cơ sở dữ liệu và câu trả lời cho 1 hệ thống chat RAG tuyển sinh, hãy suy luận. 
+        Bạn là chuyên gia đánh giá giữa câu hỏi tìm kiếm, câu hỏi trong cơ sở dữ liệu và câu trả lời, đánh giá độ phù hợp cho 1 hệ thống chat RAG tuyển sinh.
 
         Câu hỏi tìm kiếm (đã chuẩn hóa): "{enriched_query}"
         Câu hỏi DB: "{matched_question}"
         Câu trả lời chính thức: "{answer}"
+        Nhiệm vụ:
+        Xác định liệu "Câu hỏi DB + Câu trả lời" có thực sự trả lời đúng "Câu hỏi tìm kiếm" hay không.
+        1. Hãy trả lời duy nhất chỉ một từ "true" khi:
+        - Nội dung câu trả lời trực tiếp giải quyết đúng ý định (intent) của câu hỏi tìm kiếm
+        - Không chỉ trùng từ khóa, mà phải đúng ngữ nghĩa
+        - Người dùng đọc câu trả lời sẽ thấy "đúng câu hỏi của mình"
+        2. Hãy trả lời duy nhất chỉ một từ "false" khi:
+        - Chỉ trùng từ khóa nhưng khác ý nghĩa
+        - Trả lời lệch chủ đề
+        - Trả lời quá chung chung, không giải quyết câu hỏi
+        - Câu hỏi tìm kiếm và câu hỏi DB khác intent
+        3. Đặc biệt:
+        - Nếu câu hỏi tìm kiếm là lời chào (xin chào, hello, hi): trả về true
+        ---
 
-        Hãy trả lời duy nhất chỉ một từ: "true" nếu câu hỏi DB phù hợp và trả lời đó hợp lý cho truy vấn tìm kiếm; "false" nếu chỉ trùng từ khóa hoặc không phù hợp.
-        Hoặc có thể trả về "true" nếu câu hỏi tìm kiếm chỉ là lời chào.
+        Chỉ trả về duy nhất một từ:
+        "true" hoặc "false"
         """
         res = await self.llm.ainvoke(prompt)
         if not res.content:
@@ -1171,7 +1185,17 @@ class TrainingService:
 
         return {"deleted_question_id": qa_id}
 
-    def create_document(self, db: Session, title: str, file_path: str, intend_id: int, target_audiences: List[str], created_by: int, content: Optional[str] = None, is_ocr: bool = False):
+    def create_document(
+        self,
+        db: Session,
+        title: str,
+        file_path: str,
+        intend_id: int,
+        target_audiences: List[str],
+        created_by: int,
+        content: Optional[str] = None,
+        is_ocr: bool = False,
+    ):
         new_doc = KnowledgeBaseDocument(
             title=title,
             file_path=file_path,
