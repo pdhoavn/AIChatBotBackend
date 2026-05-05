@@ -8,13 +8,14 @@ from fastapi import (
     Form,
     Query,
 )
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session, joinedload, defer
 from typing import List, Optional
 from pathlib import Path
 import os
 import json
 import uuid
+import asyncio
 from datetime import datetime
 
 from app.models.database import init_db, get_db
@@ -277,87 +278,118 @@ async def upload_document_ocr(
     intend_id: int = Query(...),
     file: UploadFile = File(...),
     title: str = Form(None),
-    category: str = Form(None),
     target_audiences: List[str] = Form([]),
     current_user_id: int = Form(1),
-    db: Session = Depends(get_db)
 ):
     """
-    Upload a scanned document / image and OCR its content.
-    Saves to DB with is_ocr = 1.
+    Upload a scanned PDF and OCR its content with real-time progress via SSE.
+    
+    SSE events:
+      {"event": "start",    "total_pages": N}
+      {"event": "progress", "page": N, "total": M, "progress": P}
+      {"event": "page_done","page": N, "char_count": C, "preview": "..."}
+      {"event": "done",     "document_id": ID, "total_chars": C}
+      {"event": "error",    "message": "..."}
     """
-    print(f"[OCR] BẮT ĐẦU REQUEST. Filename: {file.filename}", flush=True)
-
-    # STEP 1: Validate file
     ext = Path(file.filename).suffix.lower()
     if ext != '.pdf':
         raise HTTPException(status_code=400, detail="OCR only supports PDF files")
 
-    # STEP 2: Read file
     file_content = await file.read()
     if len(file_content) > 50 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File too large (max 50MB)")
 
-    # STEP 3: OCR text
-    try:
-        print("[OCR] Đang OCR file...", flush=True)
-        extracted_text = documentProcessor.extract_text_ocr(file_content, file.filename)
-        if not extracted_text:
-            raise HTTPException(status_code=422, detail="Cannot extract text via OCR")
-        print(f"[OCR] OCR XONG. Kết quả dài: {len(extracted_text)}", flush=True)
-    except Exception as e:
-        print(f"[OCR] Lỗi OCR: {e}", flush=True)
-        raise HTTPException(status_code=422, detail=f"OCR error: {str(e)}")
+    # Save file to disk immediately (before streaming)
+    upload_dir = Path("uploads")
+    upload_dir.mkdir(exist_ok=True)
+    unique_filename = f"{uuid.uuid4()}_{file.filename}"
+    file_path = upload_dir / unique_filename
+    with open(file_path, "wb") as f:
+        f.write(file_content)
 
-    # STEP 4: Save file to disk
-    try:
-        upload_dir = Path("uploads")
-        upload_dir.mkdir(exist_ok=True)
-        unique_filename = f"{uuid.uuid4()}_{file.filename}"
-        file_path = upload_dir / unique_filename
-        with open(file_path, "wb") as f:
-            f.write(file_content)
-        print(f"[OCR] Lưu file XONG tại: {file_path}", flush=True)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+    doc_title = title.strip() if title and title.strip() else (file.filename or "Untitled")
 
-    # STEP 5: If content is too large, save to .txt file instead of DB
-    MAX_CONTENT_DB = 50000
-    db_content = extracted_text
-    txt_path = None
-    if len(extracted_text) > MAX_CONTENT_DB:
-        txt_path = str(upload_dir / f"ocr_text_{uuid.uuid4().hex}.txt")
-        with open(txt_path, "w", encoding="utf-8") as f:
-            f.write(extracted_text)
-        db_content = None
-        print(f"[OCR] Content quá dài ({len(extracted_text)} chars), lưu ra: {txt_path}", flush=True)
+    async def event_generator():
+        import fitz
+        import pytesseract
+        from PIL import Image
+        from app.core.config import settings
+        from app.models.database import SessionLocal
 
-    # STEP 6: Save DB
-    try:
-        service = TrainingService()
-        doc_title = title.strip() if title and title.strip() else (file.filename or "Untitled")
-        doc = service.create_document(
-            db=db,
-            title=doc_title,
-            file_path=str(file_path),
-            intend_id=intend_id,
-            target_audiences=target_audiences,
-            created_by=current_user_id,
-            content=db_content,
-            is_ocr=True,
-            path_txt=txt_path,
-        )
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"DB error: {str(e)}")
+        pytesseract.pytesseract.tesseract_cmd = settings.TESSERACT_CMD_PATH
 
-    return {
-        "message": "OCR document uploaded as draft. Waiting for approval.",
-        "document_id": doc.document_id,
-        "intend_id": doc.intend_id,
-        "status": doc.status,
-        "is_ocr": doc.is_ocr,
-    }
+        all_text: list[str] = []
+        db = SessionLocal()
+
+        try:
+            doc = fitz.open(stream=file_content, filetype="pdf")
+            total = len(doc)
+            yield f"data: {json.dumps({'event': 'start', 'total_pages': total})}\n\n"
+
+            for idx in range(total):
+                page = doc[idx]
+                progress = round((idx + 1) / total * 100)
+                yield f"data: {json.dumps({'event': 'progress', 'page': idx + 1, 'total': total, 'progress': progress})}\n\n"
+
+                pix = page.get_pixmap(dpi=300)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+                loop = asyncio.get_event_loop()
+                page_text = await loop.run_in_executor(
+                    None,
+                    pytesseract.image_to_string,
+                    img,
+                    "eng+vie",
+                )
+
+                if page_text.strip():
+                    all_text.append(f"\n--- Page {idx + 1} ---\n{page_text}")
+
+                preview = (page_text[:200] + "...").replace("\n", " ") if len(page_text) > 200 else page_text.replace("\n", " ")
+                yield f"data: {json.dumps({'event': 'page_done', 'page': idx + 1, 'char_count': len(page_text), 'preview': preview})}\n\n"
+
+            doc.close()
+            full_text = "\n\n".join(all_text)
+
+            # Save to DB
+            MAX_CONTENT_DB = 50000
+            db_content = full_text
+            txt_path = None
+            if len(full_text) > MAX_CONTENT_DB:
+                txt_path = str(upload_dir / f"ocr_text_{uuid.uuid4().hex}.txt")
+                with open(txt_path, "w", encoding="utf-8") as f:
+                    f.write(full_text)
+                db_content = None
+
+            service = TrainingService()
+            doc_record = service.create_document(
+                db=db,
+                title=doc_title,
+                file_path=str(file_path),
+                intend_id=intend_id,
+                target_audiences=target_audiences,
+                created_by=current_user_id,
+                content=db_content,
+                is_ocr=True,
+                path_txt=txt_path,
+            )
+
+            yield f"data: {json.dumps({'event': 'done', 'document_id': doc_record.document_id, 'total_chars': len(full_text), 'is_ocr': True})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'event': 'error', 'message': str(e)})}\n\n"
+        finally:
+            db.close()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/training_questions", response_model=List[TrainingQuestionResponse])
