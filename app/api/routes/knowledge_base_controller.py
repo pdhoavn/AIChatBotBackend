@@ -321,7 +321,18 @@ async def upload_document_ocr(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
-    # STEP 5: Save DB
+    # STEP 5: If content is too large, save to .txt file instead of DB
+    MAX_CONTENT_DB = 50000
+    db_content = extracted_text
+    txt_path = None
+    if len(extracted_text) > MAX_CONTENT_DB:
+        txt_path = str(upload_dir / f"ocr_text_{uuid.uuid4().hex}.txt")
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(extracted_text)
+        db_content = None
+        print(f"[OCR] Content quá dài ({len(extracted_text)} chars), lưu ra: {txt_path}", flush=True)
+
+    # STEP 6: Save DB
     try:
         service = TrainingService()
         doc_title = title.strip() if title and title.strip() else (file.filename or "Untitled")
@@ -332,8 +343,9 @@ async def upload_document_ocr(
             intend_id=intend_id,
             target_audiences=target_audiences,
             created_by=current_user_id,
-            content=extracted_text,
+            content=db_content,
             is_ocr=True,
+            path_txt=txt_path,
         )
     except Exception as e:
         db.rollback()

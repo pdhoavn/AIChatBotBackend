@@ -1171,7 +1171,7 @@ class TrainingService:
 
         return {"deleted_question_id": qa_id}
 
-    def create_document(self, db: Session, title: str, file_path: str, intend_id: int, target_audiences: List[str], created_by: int, content: Optional[str] = None, is_ocr: bool = False):
+    def create_document(self, db: Session, title: str, file_path: str, intend_id: int, target_audiences: List[str], created_by: int, content: Optional[str] = None, is_ocr: bool = False, path_txt: Optional[str] = None):
         new_doc = KnowledgeBaseDocument(
             title=title,
             file_path=file_path,
@@ -1181,6 +1181,7 @@ class TrainingService:
             created_by=created_by,
             content=content,
             is_ocr=is_ocr,
+            path_txt=path_txt,
         )
         db.add(new_doc)
         db.commit()

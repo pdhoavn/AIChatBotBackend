@@ -502,6 +502,7 @@ class KnowledgeBaseDocument(Base):
     target_audiences = Column(ARRAY(String), default=[])
     content = Column(Text, nullable=True)
     is_ocr = Column(Boolean, default=False)
+    path_txt = Column(String, nullable=True)
 
     intent = relationship('Intent', back_populates='document')
     # Relationships
