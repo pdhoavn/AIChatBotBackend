@@ -5,11 +5,13 @@ import json
 import re
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from qdrant_client import QdrantClient, models
+from qdrant_client import QdrantClient, AsyncQdrantClient, models
+from sentence_transformers import CrossEncoder
 from qdrant_client.models import Distance, VectorParams, PointStruct
 import os
 import uuid
 import asyncio
+import httpx
 from sqlalchemy.orm import Session
 from app.models import schemas
 from app.models.entities import (
@@ -33,27 +35,44 @@ from app.utils.document_processor import DocumentProcessor
 
 memory_service = MemoryManager()
 
+print("Đang nạp mô hình Reranker lên RAM, vui lòng đợi vài giây...")
+RERANKER_MODEL = CrossEncoder("BAAI/bge-reranker-v2-m3")
+print("Nạp mô hình thành công! Server sẵn sàng.")
+
 
 class TrainingService:
     def __init__(self):
+        self.top_k = os.getenv("TOP_K", 5)
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.llm = ChatOpenAI(
-            model="gpt-4.1-mini", api_key=self.openai_api_key, temperature=0.7
+            model=os.getenv("LLM_MODEL", "gpt-4.1-mini"),
+            api_key=self.openai_api_key,
+            temperature=0.7,
         )
         self.embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-large", api_key=self.openai_api_key
+            model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-large"),
+            api_key=self.openai_api_key,
         )
+
         self.qdrant_client = QdrantClient(
             host=os.getenv("QDRANT_HOST", "localhost"),
             port=int(os.getenv("QDRANT_PORT", 6333)),
             timeout=30,
             check_compatibility=False,
         )
+        self.async_qdrant_client = AsyncQdrantClient(
+            host=os.getenv("QDRANT_HOST", "localhost"),
+            port=int(os.getenv("QDRANT_PORT", 6333)),
+            timeout=15,
+            check_compatibility=False,
+            limits=httpx.Limits(max_keepalive_connections=0),
+        )
         self.training_qa_collection = "training_qa"
         self.documents_collection = "knowledge_base_documents"
         self.university_name = os.getenv(
             "CHAT_UNIVERSITY_NAME", "Đại học Giao thông Vận tải"
         )
+
         self._init_collections()
 
     def _init_collections(self):
@@ -802,6 +821,7 @@ class TrainingService:
         message: str = "",
         current_audience_id: int = None,
         current_intent_id: int = None,
+        query_embedding: Optional[List[float]] = None,
     ):
         db = SessionLocal()
         try:
@@ -832,7 +852,9 @@ class TrainingService:
             memory = memory_service.get_memory(session_id)
             mem_vars = memory.load_memory_variables({})
             chat_history = mem_vars.get("chat_history", "")
-            suggestion = self.cross_scope_search(query)
+            suggestion = await self.cross_scope_search_score(
+                query, 3, query_embedding=query_embedding
+            )
             print("Suggestion raw:", suggestion)
             if suggestion:
                 if (
@@ -861,9 +883,9 @@ class TrainingService:
 
                     - **Đối tượng phù hợp**: {suggestion['audience_names']}
 
-                    - **Lĩnh vực liên quan**: {suggestion['intent_name']}
+                    - **Lĩnh vực liên quan**: {suggestion['intent_name']}.
 
-                     .Bạn có thể làm gì tiếp theo?
+                    Bạn có thể làm gì tiếp theo?
 
                     - **Chuyển sang đúng đối tượng / lĩnh vực** để xem thông tin chính xác hơn
 
@@ -883,9 +905,9 @@ class TrainingService:
                    
                     Mình phát hiện câu hỏi của bạn có thể thuộc phạm vi khác trong hệ thống:
                     - **Đối tượng phù hợp**: {suggestion['audience_names']}
-                    - **Lĩnh vực liên quan**: {suggestion['intent_name']}
+                    - **Lĩnh vực liên quan**: {suggestion['intent_name']}.
 
-                    📄 Nội dung gần đúng:
+                    Nội dung gần đúng:
                     "{preview}..."
 
                     Bạn có thể làm gì tiếp theo?
@@ -980,6 +1002,7 @@ class TrainingService:
             print(f" Database error during chat transaction: {e}")
         except Exception as e:
             print(f"response NA error: {e}")
+            yield "Hệ thống đang quá tải, bạn vui lòng [Thử lại] nhé."
         finally:
             db.close()
 
@@ -1185,7 +1208,18 @@ class TrainingService:
 
         return {"deleted_question_id": qa_id}
 
-    def create_document(self, db: Session, title: str, file_path: str, intend_id: int, target_audiences: List[str], created_by: int, content: Optional[str] = None, is_ocr: bool = False, path_txt: Optional[str] = None):
+    def create_document(
+        self,
+        db: Session,
+        title: str,
+        file_path: str,
+        intend_id: int,
+        target_audiences: List[str],
+        created_by: int,
+        content: Optional[str] = None,
+        is_ocr: bool = False,
+        path_txt: Optional[str] = None,
+    ):
         new_doc = KnowledgeBaseDocument(
             title=title,
             file_path=file_path,
@@ -1258,7 +1292,11 @@ class TrainingService:
         if not content:
             txt_path = getattr(doc, "path_txt", None)
             if txt_path:
-                resolved = os.path.join(os.getcwd(), txt_path) if not os.path.isabs(txt_path) else txt_path
+                resolved = (
+                    os.path.join(os.getcwd(), txt_path)
+                    if not os.path.isabs(txt_path)
+                    else txt_path
+                )
                 if os.path.exists(resolved):
                     with open(resolved, "r", encoding="utf-8") as f:
                         content = f.read()
@@ -1475,46 +1513,51 @@ class TrainingService:
 
         return {"deleted_document_id": document_id}
 
-    # def add_document(self, document_id: int, content: str, intend_id: int, metadata: dict = None):
-    #     text_splitter = RecursiveCharacterTextSplitter(
-    #         chunk_size=1000,      # Size optimal cho Vietnamese
-    #         chunk_overlap=200     # Overlap to preserve context
-    #     )
-    #     chunks = text_splitter.split_text(content)
+    def add_document(
+        self, document_id: int, content: str, intend_id: int, metadata: dict = None
+    ):
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,  # Size optimal cho Vietnamese
+            chunk_overlap=200,  # Overlap to preserve context
+        )
+        chunks = text_splitter.split_text(content)
 
-    #     chunk_ids = []
-    #     for i, chunk in enumerate(chunks):
-    #         # Embed chunk
-    #         embedding = self.embeddings.embed_query(chunk)
-    #         point_id = str(uuid.uuid4())
+        chunk_ids = []
+        for i, chunk in enumerate(chunks):
+            # Embed chunk
+            embedding = self.embeddings.embed_query(chunk)
+            point_id = str(uuid.uuid4())
 
-    #         # Upsert to Qdrant
-    #         self.qdrant_client.upsert(
-    #             collection_name="knowledge_base_documents",
-    #             points=[
-    #                 PointStruct(
-    #                     id=point_id,
-    #                     vector=embedding,
-    #                     payload={
-    #                         "document_id": document_id,
-    #                         "chunk_index": i,
-    #                         "chunk_text": chunk,
-    #                         "intend_id": intend_id,
-    #                         "metadata": metadata or {},
-    #                         "type": "document"
-    #                     }
-    #                 )
-    #             ]
-    #         )
-    #         chunk_ids.append(point_id)
+            # Upsert to Qdrant
+            self.qdrant_client.upsert(
+                collection_name="knowledge_base_documents",
+                points=[
+                    PointStruct(
+                        id=point_id,
+                        vector=embedding,
+                        payload={
+                            "document_id": document_id,
+                            "chunk_index": i,
+                            "chunk_text": chunk,
+                            "intend_id": intend_id,
+                            "metadata": metadata or {},
+                            "type": "document",
+                        },
+                    )
+                ],
+            )
+            chunk_ids.append(point_id)
 
-    #     return chunk_ids
+        return chunk_ids
 
-    def cross_scope_search(self, query: str, top_k: int = 3):
-        query_embedding = self.embeddings.embed_query(query)
+    async def cross_scope_search(
+        self, query: str, top_k: int = 3, query_embedding: Optional[List[float]] = None
+    ):
+        if query_embedding is None:
+            query_embedding = await self.embeddings.aembed_query(query)
 
         # ===== 1. SEARCH TRAINING QA =====
-        qa_results = self.qdrant_client.search(
+        qa_results = await self.async_qdrant_client.search(
             collection_name=self.training_qa_collection,
             query_vector=query_embedding,
             limit=top_k,
@@ -1534,7 +1577,7 @@ class TrainingService:
             }
 
         # ===== 2. SEARCH DOCUMENT =====
-        doc_results = self.qdrant_client.search(
+        doc_results = await self.async_qdrant_client.search(
             collection_name=self.documents_collection,
             query_vector=query_embedding,
             limit=top_k,
@@ -1553,6 +1596,108 @@ class TrainingService:
                 "score": top.score,
             }
 
+        return None
+
+    async def cross_scope_search_score(
+        self, query: str, top_k: int = 3, query_embedding: Optional[List[float]] = None
+    ):
+        # Biến đổi câu hỏi thành vector
+        if query_embedding is None:
+            query_embedding = await self.embeddings.aembed_query(query)
+        candidates = []
+
+        # ===== 1. RETRIEVE TỪ CẢ 2 NGUỒN (GOM THÔ) =====
+        # Lấy từ training_qa
+        qa_results = await self.async_qdrant_client.search(
+            collection_name=self.training_qa_collection,
+            query_vector=query_embedding,
+            limit=top_k,
+            # Hạ threshold xuống thấp để không bỏ sót các câu có tiềm năng
+            score_threshold=0.3,
+        )
+        for hit in qa_results:
+            q_text = hit.payload.get("question_text", "")
+            a_text = hit.payload.get("answer_text", "")
+            combined_text = f"question: {q_text}, answer: {a_text}"
+            candidates.append(
+                {
+                    "source": "training_qa",
+                    "text": combined_text,  # Hoặc field chứa cả câu hỏi+trả lời
+                    "payload": hit.payload,
+                    "vector_score": hit.score,
+                }
+            )
+
+        # Lấy từ document
+        doc_results = await self.async_qdrant_client.search(
+            collection_name=self.documents_collection,
+            query_vector=query_embedding,
+            limit=top_k,
+            score_threshold=0.3,
+        )
+        for hit in doc_results:
+            candidates.append(
+                {
+                    "source": "document",
+                    "text": hit.payload.get("chunk_text", ""),
+                    "payload": hit.payload,
+                    "vector_score": hit.score,
+                }
+            )
+
+        # Nếu không có ứng viên nào vượt qua ngưỡng 0.3 của vector, dừng luôn
+        if not candidates:
+            return None
+
+        # ===== 2. CROSS-ENCODER RE-RANKING =====
+        # Tạo danh sách các cặp: [[Câu hỏi, Text ứng viên 1], [Câu hỏi, Text ứng viên 2], ...]
+        sentence_pairs = [[query, cand["text"]] for cand in candidates]
+
+        # Model chấm điểm đồng loạt (rất nhanh)
+        rerank_scores = RERANKER_MODEL.predict(sentence_pairs)
+
+        # Cập nhật điểm mới vào mảng candidates
+        for i, cand in enumerate(candidates):
+            cand["rerank_score"] = float(rerank_scores[i])
+
+        # Sắp xếp danh sách dựa trên điểm Re-rank (từ cao xuống thấp)
+        candidates = sorted(candidates, key=lambda x: x["rerank_score"], reverse=True)
+
+        # ===== 3. CHỌN NGƯỜI CHIẾN THẮNG =====
+        best_match = candidates[0]
+
+        # LƯU Ý VỀ ĐIỂM SỐ CỦA BGE-RERANKER:
+        # Điểm trả về không phải từ 0-1 mà là Logit (thường chạy từ -10 đến 10).
+        # Điểm > 0 thường là có liên quan, điểm âm (< 0) là không liên quan.
+        print(f"👉 Điểm Rerank cao nhất đang là: {best_match['rerank_score']}")
+        print(f"👉 Text đang xét: {best_match['text']}")
+        cross_score = float(os.getenv("CROSS_ENCODER_SCORE", 0.6))
+        if best_match["rerank_score"] >= cross_score:
+            payload = best_match["payload"]
+
+            if best_match["source"] == "training_qa":
+                return {
+                    "source": "training_qa",
+                    "audience_ids": payload.get("audience_ids"),
+                    "audience_names": payload.get("audience_names"),
+                    "intent_id": payload.get("intent_id"),
+                    "intent_name": payload.get("intent_name"),
+                    "question": payload.get("question_text"),
+                    "score": best_match["vector_score"],
+                }
+            else:
+                return {
+                    "source": "document",
+                    "audience_ids": payload.get("audience_ids"),
+                    "audience_names": payload.get("audience_names"),
+                    "intent_id": payload.get("intent_id"),
+                    "intent_name": payload.get("intent_name"),
+                    "question": payload.get("question_text"),
+                    "chunk_preview": payload.get("chunk_text", "")[:200],
+                    "score": best_match["vector_score"],
+                }
+
+        # Nếu Top 1 sau khi rerank vẫn có điểm < 0, coi như không tìm thấy đáp án hợp lệ
         return None
 
     def add_training_qa(
@@ -1617,7 +1762,7 @@ class TrainingService:
             "qdrant_question_id": point_id,
         }
 
-    def search_documents(
+    async def search_documents(
         self,
         query: str,
         audience_ids: int,
@@ -1655,9 +1800,9 @@ class TrainingService:
 
         try:
             if query_embedding is None:
-                query_embedding = self.embeddings.embed_query(query)
+                query_embedding = await self.embeddings.aembed_query(query)
 
-            results = self.qdrant_client.search(
+            results = await self.async_qdrant_client.search(
                 collection_name=self.documents_collection,
                 query_vector=query_embedding,
                 limit=top_k,
@@ -1876,7 +2021,7 @@ Yêu cầu:
         ]
         return any(marker in text for marker in markers)
 
-    def search_training_qa(
+    async def search_training_qa(
         self,
         query: str,
         audience_ids: int,
@@ -1914,9 +2059,9 @@ Yêu cầu:
 
         try:
             if query_embedding is None:
-                query_embedding = self.embeddings.embed_query(query)
+                query_embedding = await self.embeddings.aembed_query(query)
 
-            results = self.qdrant_client.search(
+            results = await self.async_qdrant_client.search(
                 collection_name=self.training_qa_collection,
                 query_vector=query_embedding,
                 limit=top_k,
@@ -1943,7 +2088,7 @@ Yêu cầu:
             print(f"Qdrant search_training_qa timeout/error: {e}")
             return []
 
-    def hybrid_search(
+    async def hybrid_search(
         self,
         audience_ids: int,
         query: str,
@@ -1984,19 +2129,19 @@ Yêu cầu:
 
         # STEP 1: Search training Q&A
         self._debug_log(f"hybrid_search: start query_len={len(query or '')}", trace_id)
-        
+
         # Optimize: Embed query once
         try:
-            query_embedding = self.embeddings.embed_query(query)
+            query_embedding = await self.embeddings.aembed_query(query)
         except Exception as e:
             self._debug_log(f"hybrid_search: embedding error {e}", trace_id)
             query_embedding = None
 
-        qa_results = self.search_training_qa(
+        qa_results = await self.search_training_qa(
             query,
             audience_ids,
             intent_id,
-            top_k=5,
+            top_k=self.top_k,
             trace_id=trace_id,
             stage="hybrid_training_qa_search",
             query_embedding=query_embedding,
@@ -2030,11 +2175,11 @@ Yêu cầu:
 
         # TIER 2: No training Q&A match, try documents
 
-        doc_results = self.search_documents(
+        doc_results = await self.search_documents(
             query,
             audience_ids,
             intent_id,
-            top_k=5,
+            top_k=self.top_k,
             trace_id=trace_id,
             stage="hybrid_tier2_document_search",
             query_embedding=query_embedding,
