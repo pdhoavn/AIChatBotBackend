@@ -84,12 +84,11 @@ async def websocket_chat(websocket: WebSocket):
 
             # Hybrid search (cả training QA và document)
             try:
-
                 hybrid_start = time.perf_counter()
-                result = service.hybrid_search(
-                    audience_id,
-                    enriched_query,
-                    intent_id_from_client,
+                result = await service.hybrid_search(
+                    audience_ids=audience_id,
+                    query=enriched_query,
+                    intent_id=intent_id_from_client,
                     trace_id=trace_id,
                 )
                 hybrid_elapsed_ms = int((time.perf_counter() - hybrid_start) * 1000)
@@ -163,7 +162,7 @@ async def websocket_chat(websocket: WebSocket):
                 else:
                     print("QA not relevant → fallback xuống document")
                     # Chạy document search lại
-                    doc_results = service.search_documents(
+                    doc_results = await service.search_documents(
                         enriched_query,
                         audience_ids=audience_id,
                         intent_id=intent_id_from_client,
@@ -300,14 +299,15 @@ async def websocket_chat(websocket: WebSocket):
             elif tier_source == "document" or tier_source == "nope":
                 print("floor 5: nope layer")
                 async for chunk in service.stream_response_from_NA(
-                    enriched_query,
-                    context,
-                    session_id,
-                    user_id,
-                    0,
-                    message,
-                    audience_id,
-                    intent_id_from_client,
+                    query=enriched_query,
+                    context=context,
+                    session_id=session_id,
+                    user_id=user_id,
+                    intent_id=0,
+                    message=message,
+                    current_audience_id=audience_id,
+                    current_intent_id=intent_id_from_client,
+                    query_embedding=result.get("query_embedding"),
                 ):
                     await websocket.send_text(
                         json.dumps(

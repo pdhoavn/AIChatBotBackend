@@ -5,11 +5,12 @@ import json
 import re
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from qdrant_client import QdrantClient, models
+from qdrant_client import QdrantClient, AsyncQdrantClient, models
 from qdrant_client.models import Distance, VectorParams, PointStruct
 import os
 import uuid
 import asyncio
+import httpx
 from sqlalchemy.orm import Session
 from app.models import schemas
 from app.models.entities import (
@@ -48,6 +49,13 @@ class TrainingService:
             port=int(os.getenv("QDRANT_PORT", 6333)),
             timeout=30,
             check_compatibility=False,
+        )
+        self.async_qdrant_client = AsyncQdrantClient(
+            host=os.getenv("QDRANT_HOST", "localhost"),
+            port=int(os.getenv("QDRANT_PORT", 6333)),
+            timeout=15,
+            check_compatibility=False,
+            limits=httpx.Limits(max_keepalive_connections=0)
         )
         self.training_qa_collection = "training_qa"
         self.documents_collection = "knowledge_base_documents"
@@ -802,6 +810,7 @@ class TrainingService:
         message: str = "",
         current_audience_id: int = None,
         current_intent_id: int = None,
+        query_embedding: Optional[List[float]] = None,
     ):
         db = SessionLocal()
         try:
@@ -832,7 +841,7 @@ class TrainingService:
             memory = memory_service.get_memory(session_id)
             mem_vars = memory.load_memory_variables({})
             chat_history = mem_vars.get("chat_history", "")
-            suggestion = self.cross_scope_search(query)
+            suggestion = await self.cross_scope_search(query, query_embedding=query_embedding)
             print("Suggestion raw:", suggestion)
             if suggestion:
                 if (
@@ -980,6 +989,7 @@ class TrainingService:
             print(f" Database error during chat transaction: {e}")
         except Exception as e:
             print(f"response NA error: {e}")
+            yield "Hệ thống đang quá tải, bạn vui lòng [Thử lại] nhé."
         finally:
             db.close()
 
@@ -1390,11 +1400,12 @@ class TrainingService:
 
     #     return chunk_ids
 
-    def cross_scope_search(self, query: str, top_k: int = 3):
-        query_embedding = self.embeddings.embed_query(query)
+    async def cross_scope_search(self, query: str, top_k: int = 3, query_embedding: Optional[List[float]] = None):
+        if query_embedding is None:
+            query_embedding = await self.embeddings.aembed_query(query)
 
         # ===== 1. SEARCH TRAINING QA =====
-        qa_results = self.qdrant_client.search(
+        qa_results = await self.async_qdrant_client.search(
             collection_name=self.training_qa_collection,
             query_vector=query_embedding,
             limit=top_k,
@@ -1414,7 +1425,7 @@ class TrainingService:
             }
 
         # ===== 2. SEARCH DOCUMENT =====
-        doc_results = self.qdrant_client.search(
+        doc_results = await self.async_qdrant_client.search(
             collection_name=self.documents_collection,
             query_vector=query_embedding,
             limit=top_k,
@@ -1497,7 +1508,7 @@ class TrainingService:
             "qdrant_question_id": point_id,
         }
 
-    def search_documents(
+    async def search_documents(
         self,
         query: str,
         audience_ids: int,
@@ -1535,9 +1546,9 @@ class TrainingService:
 
         try:
             if query_embedding is None:
-                query_embedding = self.embeddings.embed_query(query)
+                query_embedding = await self.embeddings.aembed_query(query)
 
-            results = self.qdrant_client.search(
+            results = await self.async_qdrant_client.search(
                 collection_name=self.documents_collection,
                 query_vector=query_embedding,
                 limit=top_k,
@@ -1756,7 +1767,7 @@ Yêu cầu:
         ]
         return any(marker in text for marker in markers)
 
-    def search_training_qa(
+    async def search_training_qa(
         self,
         query: str,
         audience_ids: int,
@@ -1794,9 +1805,9 @@ Yêu cầu:
 
         try:
             if query_embedding is None:
-                query_embedding = self.embeddings.embed_query(query)
+                query_embedding = await self.embeddings.aembed_query(query)
 
-            results = self.qdrant_client.search(
+            results = await self.async_qdrant_client.search(
                 collection_name=self.training_qa_collection,
                 query_vector=query_embedding,
                 limit=top_k,
@@ -1823,7 +1834,7 @@ Yêu cầu:
             print(f"Qdrant search_training_qa timeout/error: {e}")
             return []
 
-    def hybrid_search(
+    async def hybrid_search(
         self,
         audience_ids: int,
         query: str,
@@ -1867,12 +1878,12 @@ Yêu cầu:
         
         # Optimize: Embed query once
         try:
-            query_embedding = self.embeddings.embed_query(query)
+            query_embedding = await self.embeddings.aembed_query(query)
         except Exception as e:
             self._debug_log(f"hybrid_search: embedding error {e}", trace_id)
             query_embedding = None
 
-        qa_results = self.search_training_qa(
+        qa_results = await self.search_training_qa(
             query,
             audience_ids,
             intent_id,
@@ -1910,7 +1921,7 @@ Yêu cầu:
 
         # TIER 2: No training Q&A match, try documents
 
-        doc_results = self.search_documents(
+        doc_results = await self.search_documents(
             query,
             audience_ids,
             intent_id,
