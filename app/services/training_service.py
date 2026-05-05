@@ -1253,12 +1253,24 @@ class TrainingService:
             ".txt": "text/plain",
         }
         ext = os.path.splitext(doc.file_path)[1].lower()
-        mime_type = mime_map.get(ext, "text/plain")
-        content = DocumentProcessor.extract_text(
-            file_content=file_bytes,
-            filename=os.path.basename(doc.file_path),
-            mime_type=mime_type,
-        )
+        # Dùng content đã lưu trong DB (hoặc từ file txt nếu content quá dài)
+        content = getattr(doc, "content", None)
+        if not content:
+            txt_path = getattr(doc, "path_txt", None)
+            if txt_path:
+                resolved = os.path.join(os.getcwd(), txt_path) if not os.path.isabs(txt_path) else txt_path
+                if os.path.exists(resolved):
+                    with open(resolved, "r", encoding="utf-8") as f:
+                        content = f.read()
+
+        # Fallback: extract trực tiếp từ file nếu không có content
+        if not content:
+            mime_type = mime_map.get(ext, "text/plain")
+            content = DocumentProcessor.extract_text(
+                file_content=file_bytes,
+                filename=os.path.basename(doc.file_path),
+                mime_type=mime_type,
+            )
         # --- Split text ---
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000, chunk_overlap=200
