@@ -19,7 +19,10 @@ class Settings(BaseSettings):
 
     EMBEDDING_MODEL: str
     LLM_MODEL: str
-
+    CHAT_UNIVERSITY_NAME: str
+    TOP_K: int
+    CONFIDENCE_SCORE: float
+    CROSS_ENCODER_SCORE: float
     # JWT
     SECRET_KEY: str
     ALGORITHM: str

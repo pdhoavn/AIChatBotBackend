@@ -1,12 +1,12 @@
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
 import asyncio
+import os
 import json
 import time
 import uuid
 from app.models.database import SessionLocal
 from app.services import training_service
 from app.services.training_service import TrainingService
-
 
 router = APIRouter()
 # Tạo 1 instance dùng chung
@@ -25,7 +25,8 @@ def _chat_log(message: str, trace_id: str = ""):
 async def websocket_chat(websocket: WebSocket):
     # session_id = 1
     # user_id = 1
-
+    top_k = os.getenv("TOP_K", 5)
+    confidence_threshold = float(os.getenv("CONFIDENCE_SCORE", 0.35))
     service = TrainingService()
     await websocket.accept()
 
@@ -121,7 +122,7 @@ async def websocket_chat(websocket: WebSocket):
                 trace_id,
             )
             # === TIER 1: training_qa - score > 0.8 ===
-            if tier_source == "training_qa" and confidence > 0.35:
+            if tier_source == "training_qa" and confidence > confidence_threshold:
                 print("floor 1")
                 top = result["top_match"]
                 q_text = top.payload.get("question_text")
@@ -166,7 +167,7 @@ async def websocket_chat(websocket: WebSocket):
                         enriched_query,
                         audience_ids=audience_id,
                         intent_id=intent_id_from_client,
-                        top_k=5,
+                        top_k=top_k,
                         trace_id=trace_id,
                         stage="document_recheck_search",
                         query_embedding=result.get("query_embedding"),
@@ -205,7 +206,7 @@ async def websocket_chat(websocket: WebSocket):
                 print(confidence)
             print("SOURCE NAME: " + tier_source)
             # === TIER 2: document-only (no QA match) ===
-            if tier_source == "document" and confidence >= 0.35:
+            if tier_source == "document" and confidence >= confidence_threshold:
                 print("🔍 floor 3: using document context")
                 answer_text = ""
                 async for chunk in service.stream_response_from_context(
