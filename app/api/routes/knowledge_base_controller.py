@@ -743,36 +743,30 @@ def submit_document_for_review(
 
 
 @router.post("/documents/{document_id}/approve")
-def api_approve_document(
+@router.post("/documents/{document_id}/approve")
+async def api_approve_document(
     document_id: int,
-    db: Session = Depends(get_db),
     current_user: entities.Users = Depends(check_leader_permission),
 ):
-    try:
-        # Get document to retrieve its intent_id
-        document = get_document_or_404(document_id, db)
+    """
+    Approve a document and index its chunks into Qdrant with real-time progress via SSE.
 
-        service = TrainingService()
-        print(f"Approving document ID: {document_id}, Intent ID: {document.intend_id}")
-
-        result = service.approve_document(
-            db=db,
-            document_id=document_id,
-            reviewer_id=current_user.user_id,
-            intent_id=document.intend_id,  # Use actual intent_id from document
-        )
-
-        return {
-            "message": "Document approved and indexed",
-            "document_id": result.get("document_id"),
-            "status": result.get("status"),
-        }
-    except Exception as e:
-        import traceback
-
-        print(f"Error approving document {document_id}:")
-        print(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
+    SSE events:
+      {"event": "start",    "total_chunks": N}
+      {"event": "progress", "chunk": N, "total": M, "progress": P}
+      {"event": "done",     "document_id": ID, "status": "approved", "total_chunks": M}
+      {"event": "error",    "message": "..."}
+    """
+    service = TrainingService()
+    return StreamingResponse(
+        service.approve_document_stream(document_id, current_user.user_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/documents/{document_id}/reject")

@@ -1328,6 +1328,123 @@ class TrainingService:
 
         return {"document_id": document_id, "status": doc.status}
 
+    async def approve_document_stream(self, document_id: int, reviewer_id: int):
+        """
+        Async SSE generator: yield progress events while approving & indexing a document.
+
+        Events emitted:
+          {"event": "start",    "total_chunks": N}
+          {"event": "progress", "chunk": N, "total": M, "progress": P}
+          {"event": "done",     "document_id": ID, "status": "approved", "total_chunks": M, "qdrant_points": N}
+          {"event": "error",    "message": "..."}
+        """
+        db = SessionLocal()
+        try:
+            doc = db.query(KnowledgeBaseDocument).filter_by(document_id=document_id).first()
+            if not doc:
+                yield f"data: {json.dumps({'event': 'error', 'message': 'Document not found'})}\n\n"
+                return
+
+            if doc.status != "draft":
+                yield f"data: {json.dumps({'event': 'error', 'message': 'Only draft documents can be approved'})}\n\n"
+                return
+
+            audience_names_input = doc.target_audiences or []
+            audiences = (
+                db.query(TargetAudience)
+                .filter(TargetAudience.name.in_(audience_names_input))
+                .all()
+            )
+            if not audiences:
+                yield f"data: {json.dumps({'event': 'error', 'message': 'No valid audiences found'})}\n\n"
+                return
+
+            audience_ids = [a.id for a in audiences]
+            filtered_audience_names = [a.present_name for a in audiences]
+            missing = set(audience_names_input) - {a.name for a in audiences}
+            if missing:
+                yield f"data: {json.dumps({'event': 'error', 'message': f'Audience not found: {missing}'})}\n\n"
+                return
+
+            intent = db.query(Intent).filter_by(intent_id=doc.intend_id).first()
+
+            # --- Get content ---
+            content = getattr(doc, "content", None)
+            if not content:
+                txt_path = getattr(doc, "path_txt", None)
+                if txt_path:
+                    resolved = os.path.join(os.getcwd(), txt_path) if not os.path.isabs(txt_path) else txt_path
+                    if os.path.exists(resolved):
+                        with open(resolved, "r", encoding="utf-8") as f:
+                            content = f.read()
+
+            if not content:
+                abs_path = os.path.abspath(doc.file_path)
+                mime_map = {
+                    ".pdf": "application/pdf",
+                    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    ".txt": "text/plain",
+                }
+                ext = os.path.splitext(doc.file_path)[1].lower()
+                with open(abs_path, "rb") as fb:
+                    content = DocumentProcessor.extract_text(
+                        fb.read(),
+                        os.path.basename(doc.file_path),
+                        mime_map.get(ext, "text/plain"),
+                    )
+
+            if not content:
+                yield f"data: {json.dumps({'event': 'error', 'message': 'No content to index'})}\n\n"
+                return
+
+            # --- Split + embed chunks ---
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            chunks = text_splitter.split_text(content)
+            total = len(chunks)
+
+            yield f"data: {json.dumps({'event': 'start', 'total_chunks': total})}\n\n"
+
+            for i, chunk in enumerate(chunks):
+                progress = round((i + 1) / total * 100)
+                yield f"data: {json.dumps({'event': 'progress', 'chunk': i + 1, 'total': total, 'progress': progress})}\n\n"
+
+                loop = asyncio.get_event_loop()
+                embedding = await loop.run_in_executor(None, self.embeddings.embed_query, chunk)
+                point_id = str(uuid.uuid4())
+                self.qdrant_client.upsert(
+                    collection_name="knowledge_base_documents",
+                    points=[
+                        PointStruct(
+                            id=point_id,
+                            vector=embedding,
+                            payload={
+                                "document_id": document_id,
+                                "chunk_index": i,
+                                "chunk_text": chunk,
+                                "audience_ids": audience_ids,
+                                "audience_names": filtered_audience_names,
+                                "intent_id": doc.intend_id,
+                                "intent_name": intent.intent_name if intent else None,
+                                "type": "document",
+                            },
+                        )
+                    ],
+                )
+
+            # --- Finalize ---
+            doc.status = "approved"
+            doc.reviewed_by = reviewer_id
+            doc.reviewed_at = datetime.now()
+            db.commit()
+
+            yield f"data: {json.dumps({'event': 'done', 'document_id': document_id, 'status': 'approved', 'total_chunks': total})}\n\n"
+
+        except Exception as e:
+            db.rollback()
+            yield f"data: {json.dumps({'event': 'error', 'message': str(e)})}\n\n"
+        finally:
+            db.close()
+
     def delete_document(self, db: Session, document_id: int):
         doc = db.query(KnowledgeBaseDocument).filter_by(document_id=document_id).first()
         if not doc:
