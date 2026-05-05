@@ -198,27 +198,8 @@ async def websocket_chat(websocket: WebSocket):
                 f"llm_document_recommendation_check result={tier_source} elapsed_ms={tier_check_elapsed_ms}",
                 trace_id,
             )
+            # Context and confidence are already populated from previous search
             if tier_source == "document":
-                doc_results = service.search_documents(
-                    enriched_query,
-                    audience_ids=audience_id,
-                    intent_id=intent_id_from_client,
-                    top_k=5,
-                    trace_id=trace_id,
-                    stage="document_recheck_search",
-                )
-                result = service.build_document_search_result(doc_results)
-                confidence = result.get("confidence", 0.0)
-                context_chunks = result["response"]
-                intent_id = result["intent_id"]
-                context = "\n\n".join(
-                    [r.payload.get("chunk_text", "") for r in context_chunks]
-                )
-                _chat_log(
-                    f"document_recheck_result confidence={confidence:.6f} "
-                    f"chunks={len(context_chunks)} chars={len(context)} sources={result.get('sources', [])}",
-                    trace_id,
-                )
                 print("Context:" + context)
                 print("Confidence of document:")
                 print(confidence)
