@@ -293,14 +293,28 @@ class TrainingService:
         self, enriched_query: str, matched_question: str, answer: str
     ) -> bool:
         prompt = f"""
-        Bạn là chuyên gia đánh giá giữa câu hỏi tìm kiếm, câu hỏi trong cơ sở dữ liệu và câu trả lời cho 1 hệ thống chat RAG tuyển sinh, hãy suy luận. 
+        Bạn là chuyên gia đánh giá giữa câu hỏi tìm kiếm, câu hỏi trong cơ sở dữ liệu và câu trả lời, đánh giá độ phù hợp cho 1 hệ thống chat RAG tuyển sinh.
 
         Câu hỏi tìm kiếm (đã chuẩn hóa): "{enriched_query}"
         Câu hỏi DB: "{matched_question}"
         Câu trả lời chính thức: "{answer}"
+        Nhiệm vụ:
+        Xác định liệu "Câu hỏi DB + Câu trả lời" có thực sự trả lời đúng "Câu hỏi tìm kiếm" hay không.
+        1. Hãy trả lời duy nhất chỉ một từ "true" khi:
+        - Nội dung câu trả lời trực tiếp giải quyết đúng ý định (intent) của câu hỏi tìm kiếm
+        - Không chỉ trùng từ khóa, mà phải đúng ngữ nghĩa
+        - Người dùng đọc câu trả lời sẽ thấy "đúng câu hỏi của mình"
+        2. Hãy trả lời duy nhất chỉ một từ "false" khi:
+        - Chỉ trùng từ khóa nhưng khác ý nghĩa
+        - Trả lời lệch chủ đề
+        - Trả lời quá chung chung, không giải quyết câu hỏi
+        - Câu hỏi tìm kiếm và câu hỏi DB khác intent
+        3. Đặc biệt:
+        - Nếu câu hỏi tìm kiếm là lời chào (xin chào, hello, hi): trả về true
+        ---
 
-        Hãy trả lời duy nhất chỉ một từ: "true" nếu câu hỏi DB phù hợp và trả lời đó hợp lý cho truy vấn tìm kiếm; "false" nếu chỉ trùng từ khóa hoặc không phù hợp.
-        Hoặc có thể trả về "true" nếu câu hỏi tìm kiếm chỉ là lời chào.
+        Chỉ trả về duy nhất một từ:
+        "true" hoặc "false"
         """
         res = await self.llm.ainvoke(prompt)
         if not res.content:
@@ -1171,7 +1185,7 @@ class TrainingService:
 
         return {"deleted_question_id": qa_id}
 
-    def create_document(self, db: Session, title: str, file_path: str, intend_id: int, target_audiences: List[str], created_by: int, content: Optional[str] = None, is_ocr: bool = False, path_txt: Optional[str] = None):
+    def create_document(self, db: Session, title: str, file_path: str, intend_id: int, target_audiences: List[str], created_by: int, content: Optional[str] = None, is_ocr: bool = False):
         new_doc = KnowledgeBaseDocument(
             title=title,
             file_path=file_path,
@@ -1482,6 +1496,7 @@ class TrainingService:
         top_k: int = 5,
         trace_id: Optional[str] = None,
         stage: str = "document_search",
+        query_embedding: Optional[List[float]] = None,
     ):
         """
         Search documents (Fallback)
@@ -1510,7 +1525,8 @@ class TrainingService:
         )
 
         try:
-            query_embedding = self.embeddings.embed_query(query)
+            if query_embedding is None:
+                query_embedding = self.embeddings.embed_query(query)
 
             results = self.qdrant_client.search(
                 collection_name=self.documents_collection,
@@ -1739,6 +1755,7 @@ Yêu cầu:
         top_k: int = 5,
         trace_id: Optional[str] = None,
         stage: str = "training_qa_search",
+        query_embedding: Optional[List[float]] = None,
     ):
         """
         Search training Q&A (Priority 1)
@@ -1767,7 +1784,8 @@ Yêu cầu:
         )
 
         try:
-            query_embedding = self.embeddings.embed_query(query)
+            if query_embedding is None:
+                query_embedding = self.embeddings.embed_query(query)
 
             results = self.qdrant_client.search(
                 collection_name=self.training_qa_collection,
@@ -1836,8 +1854,15 @@ Yêu cầu:
         """
 
         # STEP 1: Search training Q&A
-
         self._debug_log(f"hybrid_search: start query_len={len(query or '')}", trace_id)
+        
+        # Optimize: Embed query once
+        try:
+            query_embedding = self.embeddings.embed_query(query)
+        except Exception as e:
+            self._debug_log(f"hybrid_search: embedding error {e}", trace_id)
+            query_embedding = None
+
         qa_results = self.search_training_qa(
             query,
             audience_ids,
@@ -1845,6 +1870,7 @@ Yêu cầu:
             top_k=5,
             trace_id=trace_id,
             stage="hybrid_training_qa_search",
+            query_embedding=query_embedding,
         )
         if qa_results:
             print("qa result " + qa_results[0].payload.get("answer_text"))
@@ -1870,6 +1896,7 @@ Yêu cầu:
                 "audience_names": top_match.payload.get("audience_names"),
                 "question_id": top_match.payload.get("question_id"),
                 "sources": [],
+                "query_embedding": query_embedding,
             }
 
         # TIER 2: No training Q&A match, try documents
@@ -1881,8 +1908,10 @@ Yêu cầu:
             top_k=5,
             trace_id=trace_id,
             stage="hybrid_tier2_document_search",
+            query_embedding=query_embedding,
         )
         result = self.build_document_search_result(doc_results)
+        result["query_embedding"] = query_embedding
         self._debug_log(
             f"hybrid_search: tier=document confidence={result.get('confidence', 0.0):.6f} "
             f"sources={len(result.get('sources', []))}",
