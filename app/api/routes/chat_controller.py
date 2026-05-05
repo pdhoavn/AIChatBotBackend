@@ -170,6 +170,7 @@ async def websocket_chat(websocket: WebSocket):
                         top_k=5,
                         trace_id=trace_id,
                         stage="document_recheck_search",
+                        query_embedding=result.get("query_embedding"),
                     )
                     result = service.build_document_search_result(doc_results)
                     confidence = result.get("confidence", 0.0)

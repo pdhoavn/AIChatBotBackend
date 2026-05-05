@@ -1505,6 +1505,7 @@ class TrainingService:
         top_k: int = 5,
         trace_id: Optional[str] = None,
         stage: str = "document_search",
+        query_embedding: Optional[List[float]] = None,
     ):
         """
         Search documents (Fallback)
@@ -1533,7 +1534,8 @@ class TrainingService:
         )
 
         try:
-            query_embedding = self.embeddings.embed_query(query)
+            if query_embedding is None:
+                query_embedding = self.embeddings.embed_query(query)
 
             results = self.qdrant_client.search(
                 collection_name=self.documents_collection,
@@ -1762,6 +1764,7 @@ Yêu cầu:
         top_k: int = 5,
         trace_id: Optional[str] = None,
         stage: str = "training_qa_search",
+        query_embedding: Optional[List[float]] = None,
     ):
         """
         Search training Q&A (Priority 1)
@@ -1790,7 +1793,8 @@ Yêu cầu:
         )
 
         try:
-            query_embedding = self.embeddings.embed_query(query)
+            if query_embedding is None:
+                query_embedding = self.embeddings.embed_query(query)
 
             results = self.qdrant_client.search(
                 collection_name=self.training_qa_collection,
@@ -1859,8 +1863,15 @@ Yêu cầu:
         """
 
         # STEP 1: Search training Q&A
-
         self._debug_log(f"hybrid_search: start query_len={len(query or '')}", trace_id)
+        
+        # Optimize: Embed query once
+        try:
+            query_embedding = self.embeddings.embed_query(query)
+        except Exception as e:
+            self._debug_log(f"hybrid_search: embedding error {e}", trace_id)
+            query_embedding = None
+
         qa_results = self.search_training_qa(
             query,
             audience_ids,
@@ -1868,6 +1879,7 @@ Yêu cầu:
             top_k=5,
             trace_id=trace_id,
             stage="hybrid_training_qa_search",
+            query_embedding=query_embedding,
         )
         if qa_results:
             print("qa result " + qa_results[0].payload.get("answer_text"))
@@ -1893,6 +1905,7 @@ Yêu cầu:
                 "audience_names": top_match.payload.get("audience_names"),
                 "question_id": top_match.payload.get("question_id"),
                 "sources": [],
+                "query_embedding": query_embedding,
             }
 
         # TIER 2: No training Q&A match, try documents
@@ -1904,8 +1917,10 @@ Yêu cầu:
             top_k=5,
             trace_id=trace_id,
             stage="hybrid_tier2_document_search",
+            query_embedding=query_embedding,
         )
         result = self.build_document_search_result(doc_results)
+        result["query_embedding"] = query_embedding
         self._debug_log(
             f"hybrid_search: tier=document confidence={result.get('confidence', 0.0):.6f} "
             f"sources={len(result.get('sources', []))}",
