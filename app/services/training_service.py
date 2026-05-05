@@ -1195,17 +1195,7 @@ class TrainingService:
 
         return {"deleted_question_id": qa_id}
 
-    def create_document(
-        self,
-        db: Session,
-        title: str,
-        file_path: str,
-        intend_id: int,
-        target_audiences: List[str],
-        created_by: int,
-        content: Optional[str] = None,
-        is_ocr: bool = False,
-    ):
+    def create_document(self, db: Session, title: str, file_path: str, intend_id: int, target_audiences: List[str], created_by: int, content: Optional[str] = None, is_ocr: bool = False, path_txt: Optional[str] = None):
         new_doc = KnowledgeBaseDocument(
             title=title,
             file_path=file_path,
@@ -1215,6 +1205,7 @@ class TrainingService:
             created_by=created_by,
             content=content,
             is_ocr=is_ocr,
+            path_txt=path_txt,
         )
         db.add(new_doc)
         db.commit()
@@ -1272,12 +1263,24 @@ class TrainingService:
             ".txt": "text/plain",
         }
         ext = os.path.splitext(doc.file_path)[1].lower()
-        mime_type = mime_map.get(ext, "text/plain")
-        content = DocumentProcessor.extract_text(
-            file_content=file_bytes,
-            filename=os.path.basename(doc.file_path),
-            mime_type=mime_type,
-        )
+        # Dùng content đã lưu trong DB (hoặc từ file txt nếu content quá dài)
+        content = getattr(doc, "content", None)
+        if not content:
+            txt_path = getattr(doc, "path_txt", None)
+            if txt_path:
+                resolved = os.path.join(os.getcwd(), txt_path) if not os.path.isabs(txt_path) else txt_path
+                if os.path.exists(resolved):
+                    with open(resolved, "r", encoding="utf-8") as f:
+                        content = f.read()
+
+        # Fallback: extract trực tiếp từ file nếu không có content
+        if not content:
+            mime_type = mime_map.get(ext, "text/plain")
+            content = DocumentProcessor.extract_text(
+                file_content=file_bytes,
+                filename=os.path.basename(doc.file_path),
+                mime_type=mime_type,
+            )
         # --- Split text ---
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000, chunk_overlap=200

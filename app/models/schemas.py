@@ -376,6 +376,7 @@ class KnowledgeBaseDocumentBase(BaseModel):
     target_audiences: Optional[List[str]] = []
     content: Optional[str] = None
     is_ocr: Optional[bool] = False
+    path_txt: Optional[str] = None
 
 
 class KnowledgeBaseDocumentResponse(KnowledgeBaseDocumentBase):
@@ -444,6 +445,8 @@ class DocumentDetailResponse(BaseModel):
     intent_name: Optional[str] = None
     content_char_count: int
     qdrant_points_count: int
+    is_ocr: Optional[bool] = False
+    path_txt: Optional[str] = None
 
     class Config:
         orm_mode = True

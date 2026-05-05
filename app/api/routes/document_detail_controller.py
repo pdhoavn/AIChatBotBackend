@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
+from pathlib import Path
 
 from app.models.database import get_db
 from app.models import entities
@@ -73,6 +74,20 @@ def get_document_detail(
 
     content = getattr(doc, "content", None) or ""
 
+    # Fallback: count chars from txt file if content not in DB
+    content_char_count = len(content)
+    if not content_char_count:
+        txt_path = getattr(doc, "path_txt", None)
+        if txt_path:
+            try:
+                resolved = Path(txt_path)
+                if not resolved.is_absolute():
+                    resolved = Path.cwd() / resolved
+                if resolved.exists():
+                    content_char_count = resolved.stat().st_size
+            except Exception:
+                pass
+
     return {
         "document_id": doc.document_id,
         "title": doc.title,
@@ -87,8 +102,10 @@ def get_document_detail(
         "target_audiences": getattr(doc, "target_audiences", []),
         "intent_id": doc.intent.intent_id if doc.intent else None,
         "intent_name": doc.intent.intent_name if doc.intent else None,
-        "content_char_count": len(content),
+        "content_char_count": content_char_count,
         "qdrant_points_count": qdrant_count,
+        "is_ocr": getattr(doc, "is_ocr", False),
+        "path_txt": getattr(doc, "path_txt", None),
     }
 
 
@@ -100,9 +117,24 @@ def get_document_content(
 ):
     """
     Get full extracted text content of a document.
+    Falls back to reading from path_txt file if content column is empty.
     """
     doc = _get_document_or_404(document_id, db)
     content = getattr(doc, "content", None) or ""
+
+    # Fallback: read from txt file if content stored externally
+    if not content:
+        txt_path = getattr(doc, "path_txt", None)
+        if txt_path:
+            try:
+                resolved = Path(txt_path)
+                if not resolved.is_absolute():
+                    resolved = Path.cwd() / resolved
+                if resolved.exists():
+                    with open(resolved, "r", encoding="utf-8") as f:
+                        content = f.read()
+            except Exception:
+                pass
 
     return {
         "document_id": doc.document_id,
