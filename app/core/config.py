@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "FastAPI LangChain App"
     VERSION: str = "1.0.0"
 
-    OPENAI_API_KEY: str
+    AI_API_KEY: str
     GEMINI_API_KEY: str
     DATABASE_URL: str
 
