@@ -3,7 +3,8 @@ FROM python:3.12-slim
 # 2. Thiết lập biến môi trường
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/code
+    PYTHONPATH=/code \
+    TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
 
 # 3. Cài đặt thư viện hệ thống cần thiết
 # Đã thêm: libmagic1 (check file), poppler-utils (xử lý PDF), libgl1 (xử lý ảnh/opencv)
@@ -21,6 +22,9 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+
+# Tạo thư mục tessdata (phòng khi thiếu)
+RUN mkdir -p /usr/share/tesseract-ocr/5/tessdata    
 # 4. Thiết lập thư mục làm việc
 WORKDIR /code
 
@@ -34,9 +38,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 6. Copy source code
 COPY . .
 
+#Copy file ngôn ngữ tiếng Việt vào container
+COPY vie.traineddata /usr/share/tesseract-ocr/5/tessdata/
+
 # 7. Tạo User Non-root
 RUN adduser -u 5678 --disabled-password --gecos "" appuser \
-    && chown -R appuser /code
+    && chown -R appuser /code \
+    && chown -R appuser /usr/share/tesseract-ocr/5/tessdata
 
 # --- Xử lý thư mục uploads ---
 RUN mkdir -p /code/uploads && chown -R appuser /code/uploads
