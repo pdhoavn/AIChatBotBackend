@@ -6,7 +6,6 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
 
     AI_API_KEY: str
-    GEMINI_API_KEY: str
     DATABASE_URL: str
 
     POSTGRES_USER: str
