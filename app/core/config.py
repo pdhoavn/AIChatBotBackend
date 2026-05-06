@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     CLOUDINARY_API_SECRET: str
 
     # OCR / Tesseract
-    TESSERACT_CMD_PATH: str = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    TESSERACT_CMD_PATH: str
 
     class Config:
         env_file = ".env"
