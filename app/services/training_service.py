@@ -3,8 +3,10 @@ from typing import Any, Dict, List, Optional
 import time
 import json
 import re
+from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain.chat_models import init_chat_model
 from qdrant_client import QdrantClient, AsyncQdrantClient, models
 from sentence_transformers import CrossEncoder
 from qdrant_client.models import Distance, VectorParams, PointStruct
@@ -34,7 +36,7 @@ from app.services.memory_service import MemoryManager
 from app.utils.document_processor import DocumentProcessor
 
 memory_service = MemoryManager()
-
+load_dotenv()
 print("Đang nạp mô hình Reranker lên RAM, vui lòng đợi vài giây...")
 RERANKER_MODEL = CrossEncoder("BAAI/bge-reranker-v2-m3")
 print("Nạp mô hình thành công! Server sẵn sàng.")
@@ -43,15 +45,21 @@ print("Nạp mô hình thành công! Server sẵn sàng.")
 class TrainingService:
     def __init__(self):
         self.top_k = os.getenv("TOP_K", 5)
-        self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.llm = ChatOpenAI(
+        self.ai_api_key = os.getenv("AI_API_KEY")
+        # self.llm = ChatOpenAI(
+        #     model=os.getenv("LLM_MODEL", "gpt-4.1-mini"),
+        #     api_key=self.openai_api_key,
+        #     temperature=0.7,
+        # )
+
+        self.llm = init_chat_model(
             model=os.getenv("LLM_MODEL", "gpt-4.1-mini"),
-            api_key=self.openai_api_key,
+            api_key=self.ai_api_key,  # Truyền rõ ràng api key ở đây
             temperature=0.7,
         )
         self.embeddings = OpenAIEmbeddings(
             model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-large"),
-            api_key=self.openai_api_key,
+            api_key=self.ai_api_key,
         )
 
         self.qdrant_client = QdrantClient(
@@ -901,7 +909,7 @@ class TrainingService:
                     ## Không tìm thấy thông tin trong mục hiện tại.
                     Mình đã kiểm tra trong phạm vi **đối tượng** và **lĩnh vực** bạn đang chọn, 
                     nhưng hiện tại hệ thống chưa có dữ liệu phù hợp để trả lời chính xác câu hỏi này.
-                    Gợi ý nội dung liên quan \n
+                    Gợi ý nội dung liên quan. \n
                    
                     Mình phát hiện câu hỏi của bạn có thể thuộc phạm vi khác trong hệ thống:
                     - **Đối tượng phù hợp**: {suggestion['audience_names']}
@@ -1378,7 +1386,11 @@ class TrainingService:
         """
         db = SessionLocal()
         try:
-            doc = db.query(KnowledgeBaseDocument).filter_by(document_id=document_id).first()
+            doc = (
+                db.query(KnowledgeBaseDocument)
+                .filter_by(document_id=document_id)
+                .first()
+            )
             if not doc:
                 yield f"data: {json.dumps({'event': 'error', 'message': 'Document not found'})}\n\n"
                 return
@@ -1411,7 +1423,11 @@ class TrainingService:
             if not content:
                 txt_path = getattr(doc, "path_txt", None)
                 if txt_path:
-                    resolved = os.path.join(os.getcwd(), txt_path) if not os.path.isabs(txt_path) else txt_path
+                    resolved = (
+                        os.path.join(os.getcwd(), txt_path)
+                        if not os.path.isabs(txt_path)
+                        else txt_path
+                    )
                     if os.path.exists(resolved):
                         with open(resolved, "r", encoding="utf-8") as f:
                             content = f.read()
@@ -1436,7 +1452,9 @@ class TrainingService:
                 return
 
             # --- Split + embed chunks ---
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000, chunk_overlap=200
+            )
             chunks = text_splitter.split_text(content)
             total = len(chunks)
 
@@ -1447,7 +1465,9 @@ class TrainingService:
                 yield f"data: {json.dumps({'event': 'progress', 'chunk': i + 1, 'total': total, 'progress': progress})}\n\n"
 
                 loop = asyncio.get_event_loop()
-                embedding = await loop.run_in_executor(None, self.embeddings.embed_query, chunk)
+                embedding = await loop.run_in_executor(
+                    None, self.embeddings.embed_query, chunk
+                )
                 point_id = str(uuid.uuid4())
                 self.qdrant_client.upsert(
                     collection_name="knowledge_base_documents",
@@ -1653,7 +1673,7 @@ class TrainingService:
         # Tạo danh sách các cặp: [[Câu hỏi, Text ứng viên 1], [Câu hỏi, Text ứng viên 2], ...]
         sentence_pairs = [[query, cand["text"]] for cand in candidates]
 
-        # Model chấm điểm đồng loạt (rất nhanh)
+        # Model chấm điểm đồng loạt
         rerank_scores = RERANKER_MODEL.predict(sentence_pairs)
 
         # Cập nhật điểm mới vào mảng candidates
