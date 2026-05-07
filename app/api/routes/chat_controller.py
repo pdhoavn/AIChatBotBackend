@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
 import asyncio
 import os
+from dotenv import load_dotenv
 import json
 import time
 import uuid
@@ -11,6 +12,7 @@ from app.services.training_service import TrainingService
 router = APIRouter()
 # Tạo 1 instance dùng chung
 service = TrainingService()
+load_dotenv()
 
 
 def _chat_log(message: str, trace_id: str = ""):

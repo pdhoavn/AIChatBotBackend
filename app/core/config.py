@@ -5,8 +5,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "FastAPI LangChain App"
     VERSION: str = "1.0.0"
 
-    OPENAI_API_KEY: str
-    GEMINI_API_KEY: str
+    AI_API_KEY: str
     DATABASE_URL: str
 
     POSTGRES_USER: str
@@ -33,7 +32,7 @@ class Settings(BaseSettings):
     CLOUDINARY_API_SECRET: str
 
     # OCR / Tesseract
-    TESSERACT_CMD_PATH: str = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    TESSERACT_CMD_PATH: str
 
     # Facebook Messenger
     FACEBOOK_PAGE_ACCESS_TOKEN: str

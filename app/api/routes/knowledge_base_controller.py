@@ -481,6 +481,7 @@ def get_all_documents(
                 "updated_at": doc.updated_at,
                 "created_by": doc.created_by,
                 "status": doc.status,
+                "is_ocr": doc.is_ocr,
                 "reviewed_by": doc.reviewed_by,
                 "reviewed_at": doc.reviewed_at,
                 "reject_reason": getattr(doc, "reject_reason", None),
