@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     # OCR / Tesseract
     TESSERACT_CMD_PATH: str = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
+    # Facebook Messenger
+    FACEBOOK_PAGE_ACCESS_TOKEN: str
+    FACEBOOK_VERIFY_TOKEN: str = "messenger_webhook_verify_token"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

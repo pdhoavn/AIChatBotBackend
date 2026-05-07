@@ -30,6 +30,7 @@ from app.api.routes import (
     template_controller,
     analytics_controller,
     question_log_controller,
+    messenger_controller,
 )
 
 logger = logging.getLogger(__name__)
@@ -174,6 +175,9 @@ app.include_router(template_controller.router, prefix="/template", tags=["Templa
 app.include_router(analytics_controller.router, prefix="/analytics", tags=["Analytics"])
 app.include_router(
     question_log_controller.router, prefix="/question", tags=["Suggestion Question"]
+)
+app.include_router(
+    messenger_controller.router, prefix="/webhook", tags=["Messenger"]
 )
 
 
