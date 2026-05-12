@@ -287,7 +287,7 @@ class TrainingService:
         - Chỉ viết lại câu hỏi của người dùng cho rõ ràng hơn nếu:
         • Câu trả lời hiện tại phụ thuộc trực tiếp vào hội thoại trước đó
         • Hoặc người dùng dùng đại từ, câu rút gọn, câu thiếu chủ ngữ
-
+        - Mọi câu của người dùng đều kèm theo đuôi "{self.university_name}"
         - TUYỆT ĐỐI KHÔNG:
         • Thêm thông tin mới
         • Thêm phạm vi mới (ví dụ: “các trường khác”, “tại Việt Nam”, “so sánh”)
