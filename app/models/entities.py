@@ -517,6 +517,24 @@ class KnowledgeBaseDocument(Base):
         foreign_keys=[reviewed_by],
         back_populates="reviewed_knowledge_documents",
     )
+    tasks = relationship("DocumentTask", back_populates="document", cascade="all, delete-orphan")
+
+
+class DocumentTask(Base):
+    __tablename__ = "DocumentTask"
+
+    task_id = Column(Integer, primary_key=True, autoincrement=True)
+    document_id = Column(Integer, ForeignKey("KnowledgeBaseDocument.document_id"), nullable=False)
+    task_type = Column(String, nullable=False)
+    status = Column(String, default="pending")
+    progress = Column(Integer, default=0)
+    total_items = Column(Integer, default=0)
+    completed_items = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    document = relationship("KnowledgeBaseDocument", back_populates="tasks")
 
 
 class DocumentChunk(Base):

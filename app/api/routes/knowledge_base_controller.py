@@ -8,15 +8,13 @@ from fastapi import (
     Form,
     Query,
 )
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session, joinedload, defer
 from typing import List, Optional
 from pathlib import Path
 import os
 import json
 import uuid
-import asyncio
-import time
 from datetime import datetime
 
 from app.models.database import init_db, get_db
@@ -281,16 +279,12 @@ async def upload_document_ocr(
     title: str = Form(None),
     target_audiences: List[str] = Form([]),
     current_user_id: int = Form(1),
+    db: Session = Depends(get_db),
 ):
     """
-    Upload a scanned PDF and OCR its content with real-time progress via SSE.
-    
-    SSE events:
-      {"event": "start",    "total_pages": N}
-      {"event": "progress", "page": N, "total": M, "progress": P}
-      {"event": "page_done","page": N, "char_count": C, "preview": "..."}
-      {"event": "done",     "document_id": ID, "total_chars": C}
-      {"event": "error",    "message": "..."}
+    Upload a scanned PDF and OCR its content in background.
+    Returns immediately with document_id and task_id.
+    Poll GET /knowledge/documents/{id}/task-status for progress.
     """
     ext = Path(file.filename).suffix.lower()
     if ext != '.pdf':
@@ -300,7 +294,6 @@ async def upload_document_ocr(
     if len(file_content) > 50 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File too large (max 50MB)")
 
-    # Save file to disk immediately (before streaming)
     upload_dir = Path("uploads")
     upload_dir.mkdir(exist_ok=True)
     unique_filename = f"{uuid.uuid4()}_{file.filename}"
@@ -310,101 +303,111 @@ async def upload_document_ocr(
 
     doc_title = title.strip() if title and title.strip() else (file.filename or "Untitled")
 
-    async def event_generator():
-        import fitz
-        import pytesseract
-        from PIL import Image
-        from app.core.config import settings
+    # Save doc as draft
+    service = TrainingService()
+    doc = service.create_document(
+        db=db,
+        title=doc_title,
+        file_path=str(file_path),
+        intend_id=intend_id,
+        target_audiences=target_audiences,
+        created_by=current_user_id,
+        content=None,
+        is_ocr=True,
+    )
+
+    # Create task record
+    task = entities.DocumentTask(
+        document_id=doc.document_id,
+        task_type="ocr",
+        status="pending",
+        progress=0,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+
+    # Start background OCR
+    import threading
+
+    def _run_ocr():
         from app.models.database import SessionLocal
-
-        pytesseract.pytesseract.tesseract_cmd = settings.TESSERACT_CMD_PATH
-
-        all_text: list[str] = []
-        db = SessionLocal()
-
-        def _ocr_page(img, lang):
-            """Try OCR with given lang; fallback to eng only if vie model missing."""
-            try:
-                return pytesseract.image_to_string(img, lang=lang)
-            except pytesseract.TesseractError:
-                return pytesseract.image_to_string(img, lang="eng")
-
+        bdb = SessionLocal()
         try:
-            doc = fitz.open(stream=file_content, filetype="pdf")
-            total = len(doc)
-            yield f"data: {json.dumps({'event': 'start', 'total_pages': total})}\n\n"
+            btask = bdb.query(entities.DocumentTask).filter_by(task_id=task.task_id).first()
+            if not btask:
+                return
+            btask.status = "processing"
+            bdb.commit()
+
+            import fitz, pytesseract
+            from PIL import Image
+            from app.core.config import settings
+            import io
+            pytesseract.pytesseract.tesseract_cmd = settings.TESSERACT_CMD_PATH
+
+            pdf_doc = fitz.open(stream=file_content, filetype="pdf")
+            total = pdf_doc.page_count
+            btask.total_items = total
+            btask.completed_items = 0
+            bdb.commit()
+
+            all_text: list[str] = []
+
+            def _ocr(img, lang):
+                try:
+                    return pytesseract.image_to_string(img, lang=lang)
+                except pytesseract.TesseractError:
+                    return pytesseract.image_to_string(img, lang="eng")
 
             for idx in range(total):
-                page = doc[idx]
-                progress = round((idx + 1) / total * 100)
-                yield f"data: {json.dumps({'event': 'progress', 'page': idx + 1, 'total': total, 'progress': progress})}\n\n"
-
+                page = pdf_doc[idx]
                 pix = page.get_pixmap(dpi=300)
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-
-                loop = asyncio.get_event_loop()
-                ocr_future = loop.run_in_executor(None, _ocr_page, img, "eng+vie")
-                deadline = time.monotonic() + 300
-                page_text = ""
-                while not ocr_future.done():
-                    if time.monotonic() > deadline:
-                        ocr_future.cancel()
-                        page_text = "[OCR timeout]"
-                        break
-                    yield ": heartbeat\n\n"
-                    await asyncio.sleep(8)
-
-                if ocr_future.done() and not ocr_future.cancelled():
-                    page_text = ocr_future.result()
-
-                if page_text and page_text.strip() and page_text != "[OCR timeout]":
+                page_text = _ocr(img, "eng+vie")
+                if page_text and page_text.strip():
                     all_text.append(f"\n--- Page {idx + 1} ---\n{page_text}")
+                btask.completed_items = idx + 1
+                btask.progress = round((idx + 1) / total * 100)
+                bdb.commit()
 
-                preview = (page_text[:200] + "...").replace("\n", " ") if len(page_text) > 200 else page_text.replace("\n", " ")
-                yield f"data: {json.dumps({'event': 'page_done', 'page': idx + 1, 'char_count': len(page_text), 'preview': preview})}\n\n"
-
-            doc.close()
+            pdf_doc.close()
             full_text = "\n\n".join(all_text)
 
-            # Save to DB
+            # Store content
             MAX_CONTENT_DB = 50000
-            db_content = full_text
-            txt_path = None
             if len(full_text) > MAX_CONTENT_DB:
                 txt_path = str(upload_dir / f"ocr_text_{uuid.uuid4().hex}.txt")
                 with open(txt_path, "w", encoding="utf-8") as f:
                     f.write(full_text)
-                db_content = None
+                bdoc = bdb.query(entities.KnowledgeBaseDocument).filter_by(document_id=doc.document_id).first()
+                bdoc.path_txt = txt_path
+            else:
+                bdoc = bdb.query(entities.KnowledgeBaseDocument).filter_by(document_id=doc.document_id).first()
+                bdoc.content = full_text
 
-            service = TrainingService()
-            doc_record = service.create_document(
-                db=db,
-                title=doc_title,
-                file_path=str(file_path),
-                intend_id=intend_id,
-                target_audiences=target_audiences,
-                created_by=current_user_id,
-                content=db_content,
-                is_ocr=True,
-                path_txt=txt_path,
-            )
-
-            yield f"data: {json.dumps({'event': 'done', 'document_id': doc_record.document_id, 'total_chars': len(full_text), 'is_ocr': True})}\n\n"
+            btask.status = "completed"
+            btask.progress = 100
+            bdb.commit()
 
         except Exception as e:
-            yield f"data: {json.dumps({'event': 'error', 'message': str(e)})}\n\n"
+            bdb.rollback()
+            btask = bdb.query(entities.DocumentTask).filter_by(task_id=task.task_id).first()
+            if btask:
+                btask.status = "failed"
+                btask.error_message = str(e)
+                bdb.commit()
         finally:
-            db.close()
+            bdb.close()
 
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
+    threading.Thread(target=_run_ocr, daemon=True).start()
+
+    return {
+        "message": "OCR started in background",
+        "document_id": doc.document_id,
+        "task_id": task.task_id,
+        "status": task.status,
+    }
 
 
 @router.get("/training_questions", response_model=List[TrainingQuestionResponse])
@@ -759,29 +762,149 @@ def submit_document_for_review(
 
 
 @router.post("/documents/{document_id}/approve")
-async def api_approve_document(
+def api_approve_document(
     document_id: int,
+    db: Session = Depends(get_db),
     current_user: entities.Users = Depends(check_leader_permission),
 ):
     """
-    Approve a document and index its chunks into Qdrant with real-time progress via SSE.
-
-    SSE events:
-      {"event": "start",    "total_chunks": N}
-      {"event": "progress", "chunk": N, "total": M, "progress": P}
-      {"event": "done",     "document_id": ID, "status": "approved", "total_chunks": M}
-      {"event": "error",    "message": "..."}
+    Approve a document and index its chunks into Qdrant in background.
+    Returns immediately. Poll GET /knowledge/documents/{id}/task-status for progress.
     """
-    service = TrainingService()
-    return StreamingResponse(
-        service.approve_document_stream(document_id, current_user.user_id),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+    document = get_document_or_404(document_id, db)
+    if document.status != "draft":
+        raise HTTPException(status_code=400, detail="Only draft documents can be approved")
+
+    # Create task record
+    task = entities.DocumentTask(
+        document_id=document_id,
+        task_type="approve",
+        status="pending",
+        progress=0,
     )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+
+    # Start background processing
+    import threading
+
+    def _run_approve():
+        import time as _time
+        from app.models.database import SessionLocal
+        bdb = SessionLocal()
+        try:
+            btask = bdb.query(entities.DocumentTask).filter_by(task_id=task.task_id).first()
+            if not btask:
+                return
+            btask.status = "processing"
+            bdb.commit()
+
+            bdoc = bdb.query(entities.KnowledgeBaseDocument).filter_by(document_id=document_id).first()
+            if not bdoc:
+                btask.status = "failed"
+                btask.error_message = "Document not found"
+                bdb.commit()
+                return
+
+            # Audience validation
+            audience_names_input = bdoc.target_audiences or []
+            audiences = (
+                bdb.query(entities.TargetAudience)
+                .filter(entities.TargetAudience.name.in_(audience_names_input))
+                .all()
+            )
+            if not audiences:
+                btask.status = "failed"
+                btask.error_message = "No valid audiences found"
+                bdb.commit()
+                return
+
+            audience_ids = [a.id for a in audiences]
+            filtered_audience_names = [a.present_name for a in audiences]
+
+            intent = bdb.query(entities.Intent).filter_by(intent_id=bdoc.intend_id).first()
+
+            # Get content
+            content = getattr(bdoc, "content", None)
+            if not content:
+                txt_path = getattr(bdoc, "path_txt", None)
+                if txt_path:
+                    resolved = os.path.join(os.getcwd(), txt_path) if not os.path.isabs(txt_path) else txt_path
+                    if os.path.exists(resolved):
+                        with open(resolved, "r", encoding="utf-8") as f:
+                            content = f.read()
+
+            if not content:
+                btask.status = "failed"
+                btask.error_message = "No content to index"
+                bdb.commit()
+                return
+
+            # Split
+            from langchain_text_splitters import RecursiveCharacterTextSplitter
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            chunks = text_splitter.split_text(content)
+            total = len(chunks)
+            btask.total_items = total
+            bdb.commit()
+
+            # Embed + index
+            service = TrainingService()
+            from qdrant_client.models import PointStruct
+
+            for i, chunk in enumerate(chunks):
+                embedding = service.embeddings.embed_query(chunk)
+                point_id = str(uuid.uuid4())
+                service.qdrant_client.upsert(
+                    collection_name="knowledge_base_documents",
+                    points=[
+                        PointStruct(
+                            id=point_id,
+                            vector=embedding,
+                            payload={
+                                "document_id": document_id,
+                                "chunk_index": i,
+                                "chunk_text": chunk,
+                                "audience_ids": audience_ids,
+                                "audience_names": filtered_audience_names,
+                                "intent_id": bdoc.intend_id,
+                                "intent_name": intent.intent_name if intent else None,
+                                "type": "document",
+                            },
+                        )
+                    ],
+                )
+                btask.completed_items = i + 1
+                btask.progress = round((i + 1) / total * 100)
+                bdb.commit()
+
+            # Finalize
+            bdoc.status = "approved"
+            bdoc.reviewed_by = current_user.user_id
+            bdoc.reviewed_at = datetime.now()
+            btask.status = "completed"
+            btask.progress = 100
+            bdb.commit()
+
+        except Exception as e:
+            bdb.rollback()
+            btask = bdb.query(entities.DocumentTask).filter_by(task_id=task.task_id).first()
+            if btask:
+                btask.status = "failed"
+                btask.error_message = str(e)
+                bdb.commit()
+        finally:
+            bdb.close()
+
+    threading.Thread(target=_run_approve, daemon=True).start()
+
+    return {
+        "message": "Approval started in background",
+        "document_id": document_id,
+        "task_id": task.task_id,
+        "status": task.status,
+    }
 
 
 @router.post("/documents/{document_id}/reject")

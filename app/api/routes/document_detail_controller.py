@@ -9,6 +9,7 @@ from app.models.schemas import (
     DocumentDetailResponse,
     DocumentContentResponse,
     DocumentChunkItemResponse,
+    DocumentTaskResponse,
 )
 from app.infrastructure.qdrant_manager import get_qdrant_client
 from app.core.security import get_current_user
@@ -196,3 +197,29 @@ def get_document_chunks(
         }
         for idx, c in enumerate(chunks)
     ]
+
+
+@router.get(
+    "/documents/{document_id}/task-status",
+    response_model=Optional[DocumentTaskResponse],
+)
+def get_task_status(
+    document_id: int,
+    task_type: Optional[str] = Query(None, description="Filter by type: 'ocr' or 'approve'"),
+    db: Session = Depends(get_db),
+    current_user: entities.Users = Depends(_check_view_permission),
+):
+    """
+    Get the latest background task status for a document.
+    Returns None if no task exists.
+    """
+    query = (
+        db.query(entities.DocumentTask)
+        .filter(entities.DocumentTask.document_id == document_id)
+        .order_by(entities.DocumentTask.created_at.desc())
+    )
+    if task_type:
+        query = query.filter(entities.DocumentTask.task_type == task_type)
+
+    task = query.first()
+    return task

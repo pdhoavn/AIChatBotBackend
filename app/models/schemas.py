@@ -452,6 +452,22 @@ class DocumentDetailResponse(BaseModel):
         orm_mode = True
 
 
+class DocumentTaskResponse(BaseModel):
+    task_id: int
+    document_id: int
+    task_type: str
+    status: str
+    progress: int
+    total_items: int
+    completed_items: int
+    error_message: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        orm_mode = True
+
+
 # ================= CHAT =================
 class ChatInteractionBase(BaseModel):
     message_text: str
