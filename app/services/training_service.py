@@ -1466,9 +1466,21 @@ class TrainingService:
                 yield f"data: {json.dumps({'event': 'progress', 'chunk': i + 1, 'total': total, 'progress': progress})}\n\n"
 
                 loop = asyncio.get_event_loop()
-                embedding = await loop.run_in_executor(
-                    None, self.embeddings.embed_query, chunk
-                )
+                embed_future = loop.run_in_executor(None, self.embeddings.embed_query, chunk)
+                deadline = time.monotonic() + 120
+                embedding = None
+                while not embed_future.done():
+                    if time.monotonic() > deadline:
+                        embed_future.cancel()
+                        break
+                    yield ": heartbeat\n\n"
+                    await asyncio.sleep(8)
+
+                if embed_future.done() and not embed_future.cancelled():
+                    embedding = embed_future.result()
+                else:
+                    embedding = self.embeddings.embed_query(chunk)
+
                 point_id = str(uuid.uuid4())
                 self.qdrant_client.upsert(
                     collection_name="knowledge_base_documents",

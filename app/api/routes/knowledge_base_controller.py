@@ -16,6 +16,7 @@ import os
 import json
 import uuid
 import asyncio
+import time
 from datetime import datetime
 
 from app.models.database import init_db, get_db
@@ -321,6 +322,13 @@ async def upload_document_ocr(
         all_text: list[str] = []
         db = SessionLocal()
 
+        def _ocr_page(img, lang):
+            """Try OCR with given lang; fallback to eng only if vie model missing."""
+            try:
+                return pytesseract.image_to_string(img, lang=lang)
+            except pytesseract.TesseractError:
+                return pytesseract.image_to_string(img, lang="eng")
+
         try:
             doc = fitz.open(stream=file_content, filetype="pdf")
             total = len(doc)
@@ -335,14 +343,21 @@ async def upload_document_ocr(
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
                 loop = asyncio.get_event_loop()
-                page_text = await loop.run_in_executor(
-                    None,
-                    pytesseract.image_to_string,
-                    img,
-                    "eng+vie",
-                )
+                ocr_future = loop.run_in_executor(None, _ocr_page, img, "eng+vie")
+                deadline = time.monotonic() + 300
+                page_text = ""
+                while not ocr_future.done():
+                    if time.monotonic() > deadline:
+                        ocr_future.cancel()
+                        page_text = "[OCR timeout]"
+                        break
+                    yield ": heartbeat\n\n"
+                    await asyncio.sleep(8)
 
-                if page_text.strip():
+                if ocr_future.done() and not ocr_future.cancelled():
+                    page_text = ocr_future.result()
+
+                if page_text and page_text.strip() and page_text != "[OCR timeout]":
                     all_text.append(f"\n--- Page {idx + 1} ---\n{page_text}")
 
                 preview = (page_text[:200] + "...").replace("\n", " ") if len(page_text) > 200 else page_text.replace("\n", " ")
@@ -743,7 +758,6 @@ def submit_document_for_review(
     }
 
 
-@router.post("/documents/{document_id}/approve")
 @router.post("/documents/{document_id}/approve")
 async def api_approve_document(
     document_id: int,
