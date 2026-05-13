@@ -51,7 +51,7 @@ class Users(Base):
     admission_official_profile = relationship(
         "AdmissionOfficialProfile", back_populates="user", uselist=False
     )
-
+    
     # documents / knowledge base
     knowledge_documents = relationship(
         "KnowledgeBaseDocument",
@@ -63,6 +63,11 @@ class Users(Base):
         "KnowledgeBaseDocument",
         foreign_keys="[KnowledgeBaseDocument.reviewed_by]",
         back_populates="reviewer",
+    )
+    deleted_knowledge_documents = relationship(
+    "KnowledgeBaseDocument",
+    foreign_keys="KnowledgeBaseDocument.deleted_by",
+    back_populates="deleter",
     )
     document_chunks = relationship(
         "DocumentChunk", back_populates="created_by_user", cascade="all, delete-orphan"
@@ -99,6 +104,11 @@ class Users(Base):
         foreign_keys="[TrainingQuestionAnswer.approved_by]",
         back_populates="approved_by_user",
         cascade="all, delete-orphan",
+    )
+    training_question_answers_deleted = relationship(
+    "TrainingQuestionAnswer",
+    foreign_keys="TrainingQuestionAnswer.deleted_by",
+    back_populates="deleted_by_user",
     )
     # Note: rejected_by link removed; rejection is stored as text in TrainingQuestionAnswer.reject_reason
 
@@ -446,7 +456,7 @@ class TrainingQuestionAnswer(Base):
     reject_reason = Column(String, nullable=True)
     target_audiences = Column(ARRAY(String), default=[])
     # removed rejected_by/rejected_at: rejection author/date are not stored as separate columns
-
+    deleted_by = Column(Integer, ForeignKey("Users.user_id"), nullable=True)
     # Relationships
     intent = relationship("Intent", back_populates="training_questions")
 
@@ -459,6 +469,11 @@ class TrainingQuestionAnswer(Base):
         "Users",
         foreign_keys=[approved_by],
         back_populates="training_question_answers_approved",
+    )
+    deleted_by_user = relationship(
+        "Users",
+        foreign_keys=[deleted_by],
+        back_populates="training_question_answers_deleted",
     )
     # rejection author relationship removed
 
@@ -498,6 +513,7 @@ class KnowledgeBaseDocument(Base):
     created_by = Column(Integer, ForeignKey('Users.user_id'))
     reviewed_by = Column(Integer, ForeignKey('Users.user_id'), nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
+    deleted_by = Column(Integer, ForeignKey('Users.user_id'), nullable=True)
     reject_reason = Column(String, nullable=True)
     target_audiences = Column(ARRAY(String), default=[])
     content = Column(Text, nullable=True)
@@ -516,6 +532,11 @@ class KnowledgeBaseDocument(Base):
         "Users",
         foreign_keys=[reviewed_by],
         back_populates="reviewed_knowledge_documents",
+    )
+    deleter = relationship(
+        "Users",
+        foreign_keys=[deleted_by],
+        back_populates="deleted_knowledge_documents",
     )
     tasks = relationship("DocumentTask", back_populates="document", cascade="all, delete-orphan")
 

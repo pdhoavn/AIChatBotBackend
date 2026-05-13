@@ -19,6 +19,8 @@ from datetime import datetime
 
 from app.models.database import init_db, get_db
 from app.models.schemas import (
+    KnowledgeBaseDocumentDeletedResponse,
+    TrainingQuestionDeletedResponse,
     TrainingQuestionRequest,
     TrainingQuestionResponse,
     KnowledgeBaseDocumentResponse,
@@ -244,6 +246,7 @@ async def upload_document(
         service = TrainingService()
         print("[9] Đang lưu vào Database...", flush=True)
         doc_title = title.strip() if title and title.strip() else (file.filename or "Untitled")
+        print(f"User id submid: {current_user_id}")
         doc = service.create_document(
             db=db,
             title=doc_title,
@@ -409,6 +412,21 @@ async def upload_document_ocr(
         "status": task.status,
     }
 
+@router.get(
+    "/training_questions/deleted",
+    response_model=List[TrainingQuestionDeletedResponse]
+)
+def get_deleted_training_questions(db: Session = Depends(get_db)):
+    service = TrainingService()
+    return service.get_deleted_questions(db)
+
+@router.get(
+    "/documents/deleted",
+    response_model=List[KnowledgeBaseDocumentDeletedResponse]
+)
+def get_deleted_documents(db: Session = Depends(get_db)):
+    service = TrainingService()
+    return service.get_deleted_documents(db)
 
 @router.get("/training_questions", response_model=List[TrainingQuestionResponse])
 def get_all_training_questions(
@@ -449,8 +467,8 @@ def get_all_training_questions(
                 "status": tqa.status,
                 "created_at": tqa.created_at.date() if tqa.created_at else None,
                 "approved_at": tqa.approved_at.date() if tqa.approved_at else None,
-                "created_by": tqa.created_by,
-                "approved_by": tqa.approved_by,
+                "created_by_name": tqa.created_by_user.full_name if tqa.created_by_user else None,
+                "approved_by_name": tqa.approved_by_user.full_name if tqa.approved_by_user else None,
                 "reject_reason": getattr(tqa, "reject_reason", None),
                 "target_audiences": getattr(tqa, "target_audiences", []),
             }
@@ -479,7 +497,9 @@ def get_all_documents(
         joinedload(entities.KnowledgeBaseDocument.intent),
         defer(entities.KnowledgeBaseDocument.content)
     )
-
+    query = query.filter(
+    entities.KnowledgeBaseDocument.status != "deleted"
+    )
     # Apply status filter if provided
     if status:
         query = query.filter(entities.KnowledgeBaseDocument.status == status)
@@ -501,7 +521,9 @@ def get_all_documents(
                 "status": doc.status,
                 "is_ocr": doc.is_ocr,
                 "reviewed_by": doc.reviewed_by,
+                "created_by_name": doc.author.full_name if doc.author else None,
                 "reviewed_at": doc.reviewed_at,
+                "reviewed_by_name": doc.reviewer.full_name if doc.reviewer else None,
                 "reject_reason": getattr(doc, "reject_reason", None),
                 "target_audiences": getattr(doc, "target_audiences", []),
                 "intent_id": doc.intent.intent_id if doc.intent else None,
@@ -642,9 +664,12 @@ def get_document_by_id(
         "created_at": document.created_at.date() if document.created_at else None,
         "updated_at": document.updated_at.date() if document.updated_at else None,
         "created_by": document.created_by,
+        "created_by_name": document.author.full_name if document.author else None,
+        "reviewed_by_name": document.reviewer.full_name if document.reviewer else None,
         "status": document.status,
         "reviewed_by": document.reviewed_by,
         "reviewed_at": document.reviewed_at.date() if document.reviewed_at else None,
+        
         "reject_reason": getattr(document, "reject_reason", None),
         "target_audiences": getattr(document, "target_audiences", []),
     }
@@ -723,6 +748,8 @@ def get_pending_documents(
             "status": doc.status,
             "reviewed_by": doc.reviewed_by,
             "reviewed_at": doc.reviewed_at.date() if doc.reviewed_at else None,
+            "created_by_name": doc.author.full_name if doc.author else None,
+            "reviewed_by_name": doc.reviewer.full_name if doc.reviewer else None,
             "reject_reason": getattr(doc, "reject_reason", None),
             "target_audiences": getattr(doc, "target_audiences", []),
             "intent_id": doc.intent.intent_id if doc.intent else None,
@@ -785,7 +812,6 @@ def api_approve_document(
     db.add(task)
     db.commit()
     db.refresh(task)
-
     # Start background processing
     import threading
 
@@ -947,7 +973,7 @@ def delete_document(
     Only Admin or ConsultantLeader can delete documents.
     """
     document = get_document_or_404(document_id, db)
-    service.delete_document(db, document_id)
+    service.delete_document(db, document_id, current_user)
     document.status = "deleted"
     db.commit()
 
@@ -1006,6 +1032,8 @@ def get_pending_training_questions(
             "approved_at": q.approved_at.date() if q.approved_at else None,
             "created_by": q.created_by,
             "approved_by": q.approved_by,
+            "created_by_name": q.created_by_user.full_name if q.created_by_user else None,
+            "approved_by_name": q.approved_by_user.full_name if q.approved_by_user else None,
             "reject_reason": getattr(q, "reject_reason", None),
             "target_audiences": getattr(q, "target_audiences", []),
         }
@@ -1124,7 +1152,7 @@ def delete_training_qa(
     Only Admin or ConsultantLeader can delete Q&A.
     """
     qa = get_training_qa_or_404(question_id, db)
-    service.delete_training_qa(db, question_id)
+    service.delete_training_qa(db, question_id, current_user)
     qa.status = "deleted"
     db.commit()
 
