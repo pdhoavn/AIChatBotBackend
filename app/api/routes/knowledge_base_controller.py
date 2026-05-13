@@ -793,6 +793,7 @@ def api_approve_document(
         import time as _time
         from app.models.database import SessionLocal
         bdb = SessionLocal()
+        reviewer_id = current_user.user_id
         try:
             btask = bdb.query(entities.DocumentTask).filter_by(task_id=task.task_id).first()
             if not btask:
@@ -881,7 +882,7 @@ def api_approve_document(
 
             # Finalize
             bdoc.status = "approved"
-            bdoc.reviewed_by = current_user.user_id
+            bdoc.reviewed_by = reviewer_id
             bdoc.reviewed_at = datetime.now()
             btask.status = "completed"
             btask.progress = 100
