@@ -334,12 +334,16 @@ class TrainingQuestionResponse(TrainingQuestionRequest):
     approved_at: Optional[datetime] = None
     created_by: Optional[int] = None
     approved_by: Optional[int] = None
+    created_by_name: Optional[str]
+    approved_by_name: Optional[str]
     reject_reason: Optional[str] = None
     target_audiences: Optional[List[str]] = []
 
     class Config:
         orm_mode = True
-
+class TrainingQuestionDeletedResponse(TrainingQuestionResponse):
+    deleted_by: Optional[int] = None
+    deleted_by_name: Optional[str]
 
 class FaqStatisticsBase(BaseModel):
     usage_count: int
@@ -384,6 +388,8 @@ class KnowledgeBaseDocumentResponse(KnowledgeBaseDocumentBase):
     status: Optional[str] = "draft"  # draft, approved, rejected, deleted
     reviewed_by: Optional[int] = None
     reviewed_at: Optional[datetime] = None
+    created_by_name: Optional[str]
+    reviewed_by_name: Optional[str]
     reject_reason: Optional[str] = None
     target_audiences: Optional[List[str]] = []
     content: Optional[str] = None
@@ -394,6 +400,9 @@ class KnowledgeBaseDocumentResponse(KnowledgeBaseDocumentBase):
     class Config:
         orm_mode = True
 
+class KnowledgeBaseDocumentDeletedResponse(KnowledgeBaseDocumentResponse):
+    deleted_by: Optional[int] = None
+    deleted_by_name: Optional[str]
 
 class DocumentChunkBase(BaseModel):
     chunk_text: str
@@ -440,6 +449,7 @@ class DocumentDetailResponse(BaseModel):
     created_by: Optional[int] = None
     reviewed_by: Optional[int] = None
     reviewed_at: Optional[datetime] = None
+    TrainingQuestionResponse
     target_audiences: Optional[List[str]] = []
     intent_id: Optional[int] = None
     intent_name: Optional[str] = None

@@ -29,6 +29,7 @@ from app.models.entities import (
     RiasecResult,
     TargetAudience,
     TrainingQuestionAnswer,
+    Users,
 )
 from app.models.database import SessionLocal
 from sqlalchemy.exc import SQLAlchemyError
@@ -1191,7 +1192,7 @@ class TrainingService:
 
         return {"postgre_question_id": qa.question_id, "qdrant_question_id": point_id}
 
-    def delete_training_qa(self, db: Session, qa_id: int):
+    def delete_training_qa(self, db: Session, qa_id: int, current_user: Users):
 
         qa = db.query(TrainingQuestionAnswer).filter_by(question_id=qa_id).first()
         if not qa:
@@ -1211,8 +1212,7 @@ class TrainingService:
             ),
         )
 
-        # Xóa trong DB
-        db.delete(qa)
+        qa.deleted_by = current_user.user_id
         db.commit()
 
         return {"deleted_question_id": qa_id}
@@ -1516,7 +1516,7 @@ class TrainingService:
         finally:
             db.close()
 
-    def delete_document(self, db: Session, document_id: int):
+    def delete_document(self, db: Session, document_id: int, current_user: Users):
         doc = db.query(KnowledgeBaseDocument).filter_by(document_id=document_id).first()
         if not doc:
             raise Exception("Document not found")
@@ -1540,8 +1540,8 @@ class TrainingService:
         dl = db.query(DocumentChunk).filter_by(document_id=document_id)
         if dl:
             dl.delete()
-        # Xóa document trong DB
-        db.delete(doc)
+        
+        doc.deleted_by = current_user.user_id
         db.commit()
 
         return {"deleted_document_id": document_id}
@@ -1583,6 +1583,91 @@ class TrainingService:
 
         return chunk_ids
 
+    def get_deleted_questions(self, db: Session):
+        results = (
+            db.query(TrainingQuestionAnswer)
+            .filter(TrainingQuestionAnswer.status == "deleted")
+            .all()
+        )
+
+        response = []
+
+        for item in results:
+            response.append({
+                "question_id": item.question_id,
+                "question": item.question,
+                "answer": item.answer,
+                "intent_id": item.intent.intent_id if item.intent else None,
+                "intent_name": item.intent.intent_name if item.intent else None,
+                "status": item.status,
+                "created_at": item.created_at,
+                "approved_at": item.approved_at,
+                "created_by": item.created_by,
+                "approved_by": item.approved_by,
+                "created_by_name": (
+                    item.created_by_user.full_name
+                    if item.created_by_user else None
+                ),
+                "approved_by_name": (
+                    item.approved_by_user.full_name
+                    if item.approved_by_user else None
+                ),
+                "deleted_by": item.deleted_by,
+                "deleted_by_name": (
+                    item.deleted_by_user.full_name
+                    if item.deleted_by_user else None
+                ),
+                "reject_reason": getattr(item, "reject_reason", None),
+                "target_audiences": getattr(item, "target_audiences", []),
+            })
+
+        return response
+
+    def get_deleted_documents(self, db: Session):
+        results = (
+            db.query(KnowledgeBaseDocument)
+            .filter(KnowledgeBaseDocument.status == "deleted")
+            .all()
+        )
+
+        response = []
+
+        for item in results:
+            response.append({
+                "document_id": item.document_id,
+                "title": item.title,
+                "file_path": item.file_path,
+                "category": item.category,
+                "created_at": item.created_at,
+                "updated_at": item.updated_at,
+                "created_by": item.created_by,
+                "created_by_name": (
+                    item.author.full_name
+                    if item.author else None
+                ),
+                "reviewed_by": item.reviewed_by,
+                "reviewed_by_name": (
+                    item.reviewer.full_name
+                    if item.reviewer else None
+                ),
+                "reviewed_at": item.reviewed_at,
+                "deleted_by": item.deleted_by,
+                "deleted_by_name": (
+                    item.deleter.full_name
+                    if item.deleter else None
+                ),
+                "reject_reason": getattr(item, "reject_reason", None),
+                "target_audiences": getattr(item, "target_audiences", []),
+                "content": item.content,
+                "is_ocr": item.is_ocr,
+                "path_txt": item.path_txt,
+                "status": item.status,
+                "intent_id": item.intent.intent_id if item.intent else None,
+                "intent_name": item.intent.intent_name if item.intent else None,
+            })
+
+        return response
+    
     async def cross_scope_search(
         self, query: str, top_k: int = 3, query_embedding: Optional[List[float]] = None
     ):
