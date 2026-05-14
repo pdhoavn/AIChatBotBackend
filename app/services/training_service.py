@@ -569,9 +569,14 @@ class TrainingService:
             - Nếu trong câu trả lời có đường dẫn thì hãy markdown đường dẫn
             - Hãy tạo ra câu trả lời không quá dài, gói gọn ý chính, chỉ khi câu hỏi yêu cầu "chi tiết" thì mới tạo câu trả lời đầy đủ
             - Bạn là chatbot tra cứu thông tin chuyên nghiệp của trường {self.university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
-            - Nếu không tìm thấy thông tin, hãy nói rõ và gợi ý liên hệ trực tiếp nhân viên tư vấn
+            - Nếu không tìm thấy thông tin → Nói rõ hệ thống chưa có dữ liệu, → KHÔNG tự chọn email/SĐT/fanpage từ context để gợi ý
+                trừ khi chunk đó TRỰC TIẾP xử lý đúng vấn đề được hỏi.
+                Ví dụ: hỏi lịch thi → KHÔNG dùng email phòng ký túc xá
+            - Khi trả lời về một đơn vị/phòng ban cụ thể, CHỈ sử dụng thông tin
+                từ chunk có heading KHỚP CHÍNH XÁC với tên đơn vị được hỏi.
+                KHÔNG lấy thông tin (website, email, SĐT) từ chunk của đơn vị khác
+                dù tên có vẻ tương tự.
             - Không cần phải chào hỏi mỗi lần trả lời, vào thẳng vấn đề chính
-            -gửi full nội dung context
             - Nếu câu hỏi chỉ là chào hỏi, hoặc các câu xã giao, hãy trả lời bằng lời chào thân thiện, giới thiệu về bản thân chatbot, KHÔNG kéo thêm thông tin chi tiết trong context.
             - Khi có thể, hãy **giải thích thêm bối cảnh hoặc gợi ý bước tiếp theo**, ví dụ:  
                 “Bạn muốn mình gửi danh sách ngành đào tạo kèm chuyên ngành chi tiết không?”  
@@ -1466,7 +1471,9 @@ class TrainingService:
                 yield f"data: {json.dumps({'event': 'progress', 'chunk': i + 1, 'total': total, 'progress': progress})}\n\n"
 
                 loop = asyncio.get_event_loop()
-                embed_future = loop.run_in_executor(None, self.embeddings.embed_query, chunk)
+                embed_future = loop.run_in_executor(
+                    None, self.embeddings.embed_query, chunk
+                )
                 deadline = time.monotonic() + 120
                 embedding = None
                 while not embed_future.done():
@@ -1540,7 +1547,7 @@ class TrainingService:
         dl = db.query(DocumentChunk).filter_by(document_id=document_id)
         if dl:
             dl.delete()
-        
+
         doc.deleted_by = current_user.user_id
         db.commit()
 
@@ -1593,33 +1600,34 @@ class TrainingService:
         response = []
 
         for item in results:
-            response.append({
-                "question_id": item.question_id,
-                "question": item.question,
-                "answer": item.answer,
-                "intent_id": item.intent.intent_id if item.intent else None,
-                "intent_name": item.intent.intent_name if item.intent else None,
-                "status": item.status,
-                "created_at": item.created_at,
-                "approved_at": item.approved_at,
-                "created_by": item.created_by,
-                "approved_by": item.approved_by,
-                "created_by_name": (
-                    item.created_by_user.full_name
-                    if item.created_by_user else None
-                ),
-                "approved_by_name": (
-                    item.approved_by_user.full_name
-                    if item.approved_by_user else None
-                ),
-                "deleted_by": item.deleted_by,
-                "deleted_by_name": (
-                    item.deleted_by_user.full_name
-                    if item.deleted_by_user else None
-                ),
-                "reject_reason": getattr(item, "reject_reason", None),
-                "target_audiences": getattr(item, "target_audiences", []),
-            })
+            response.append(
+                {
+                    "question_id": item.question_id,
+                    "question": item.question,
+                    "answer": item.answer,
+                    "intent_id": item.intent.intent_id if item.intent else None,
+                    "intent_name": item.intent.intent_name if item.intent else None,
+                    "status": item.status,
+                    "created_at": item.created_at,
+                    "approved_at": item.approved_at,
+                    "created_by": item.created_by,
+                    "approved_by": item.approved_by,
+                    "created_by_name": (
+                        item.created_by_user.full_name if item.created_by_user else None
+                    ),
+                    "approved_by_name": (
+                        item.approved_by_user.full_name
+                        if item.approved_by_user
+                        else None
+                    ),
+                    "deleted_by": item.deleted_by,
+                    "deleted_by_name": (
+                        item.deleted_by_user.full_name if item.deleted_by_user else None
+                    ),
+                    "reject_reason": getattr(item, "reject_reason", None),
+                    "target_audiences": getattr(item, "target_audiences", []),
+                }
+            )
 
         return response
 
@@ -1633,41 +1641,38 @@ class TrainingService:
         response = []
 
         for item in results:
-            response.append({
-                "document_id": item.document_id,
-                "title": item.title,
-                "file_path": item.file_path,
-                "category": item.category,
-                "created_at": item.created_at,
-                "updated_at": item.updated_at,
-                "created_by": item.created_by,
-                "created_by_name": (
-                    item.author.full_name
-                    if item.author else None
-                ),
-                "reviewed_by": item.reviewed_by,
-                "reviewed_by_name": (
-                    item.reviewer.full_name
-                    if item.reviewer else None
-                ),
-                "reviewed_at": item.reviewed_at,
-                "deleted_by": item.deleted_by,
-                "deleted_by_name": (
-                    item.deleter.full_name
-                    if item.deleter else None
-                ),
-                "reject_reason": getattr(item, "reject_reason", None),
-                "target_audiences": getattr(item, "target_audiences", []),
-                "content": item.content,
-                "is_ocr": item.is_ocr,
-                "path_txt": item.path_txt,
-                "status": item.status,
-                "intent_id": item.intent.intent_id if item.intent else None,
-                "intent_name": item.intent.intent_name if item.intent else None,
-            })
+            response.append(
+                {
+                    "document_id": item.document_id,
+                    "title": item.title,
+                    "file_path": item.file_path,
+                    "category": item.category,
+                    "created_at": item.created_at,
+                    "updated_at": item.updated_at,
+                    "created_by": item.created_by,
+                    "created_by_name": (item.author.full_name if item.author else None),
+                    "reviewed_by": item.reviewed_by,
+                    "reviewed_by_name": (
+                        item.reviewer.full_name if item.reviewer else None
+                    ),
+                    "reviewed_at": item.reviewed_at,
+                    "deleted_by": item.deleted_by,
+                    "deleted_by_name": (
+                        item.deleter.full_name if item.deleter else None
+                    ),
+                    "reject_reason": getattr(item, "reject_reason", None),
+                    "target_audiences": getattr(item, "target_audiences", []),
+                    "content": item.content,
+                    "is_ocr": item.is_ocr,
+                    "path_txt": item.path_txt,
+                    "status": item.status,
+                    "intent_id": item.intent.intent_id if item.intent else None,
+                    "intent_name": item.intent.intent_name if item.intent else None,
+                }
+            )
 
         return response
-    
+
     async def cross_scope_search(
         self, query: str, top_k: int = 3, query_embedding: Optional[List[float]] = None
     ):
