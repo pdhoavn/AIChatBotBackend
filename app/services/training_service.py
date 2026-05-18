@@ -373,9 +373,8 @@ class TrainingService:
           • Không suy diễn
           • Không trả lời chung chung
           • Không chỉ dựa vào trùng từ khóa
-        - Chỉ trả về "document" nếu NỘI DUNG của document base THỰC SỰ có thông tin trả lời câu hỏi và thông tin đó đúng ý định của người dùng muốn biết
-        - Trước khi trả về "document", hãy tự hỏi và suy luận kĩ càng:
-              "Nội dung của Document base có trực tiếp liệt kê hoặc mô tả thông tin mà người dùng hỏi không?"
+        - Chỉ trả về "document" nếu NỘI DUNG của document base THỰC SỰ có thông tin trả lời câu hỏi và thông tin đó đúng ý định của câu query của người dùng muốn biết
+        - (Tự hỏi: Context có thực sự chứa câu trả lời cho câu truy vấn của người dùng không? Nếu có -> "document").
         - Check qua tầng 2 nếu:
             • chỉ trùng từ khóa nhưng không cùng ý nghĩa
             • document không chứa dữ liệu cần thiết để trả lời
@@ -553,7 +552,7 @@ class TrainingService:
             memory = memory_service.get_memory(session_id)
             mem_vars = memory.load_memory_variables({})
             chat_history = mem_vars.get("chat_history", "")
-
+            print(f"Context: {context}")
             prompt = f"""Bạn là một chatbot tra cứu thông tin chuyên nghiệp của trường {self.university_name}
             Đây là đoạn hội thoại trước: 
             {chat_history}
@@ -568,7 +567,7 @@ class TrainingService:
             - Trả lời theo định dạng Markdown: dùng tiêu đề ##, gạch đầu dòng -, xuống dòng rõ ràng.
             - Nếu trong câu trả lời có đường dẫn thì hãy markdown đường dẫn
             - Hãy tạo ra câu trả lời không quá dài, gói gọn ý chính, chỉ khi câu hỏi yêu cầu "chi tiết" thì mới tạo câu trả lời đầy đủ
-            - Bạn là chatbot tra cứu thông tin chuyên nghiệp của trường {self.university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
+            - Bạn là chatbot tra cứu thông tin chuyên nghiệp của {self.university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác hay phân hiệu khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
             - Nếu không tìm thấy thông tin → Nói rõ hệ thống chưa có dữ liệu, → KHÔNG tự chọn email/SĐT/fanpage từ context để gợi ý
                 trừ khi chunk đó TRỰC TIẾP xử lý đúng vấn đề được hỏi.
                 Ví dụ: hỏi lịch thi → KHÔNG dùng email phòng ký túc xá
@@ -576,6 +575,9 @@ class TrainingService:
                 từ chunk có heading KHỚP CHÍNH XÁC với tên đơn vị được hỏi.
                 KHÔNG lấy thông tin (website, email, SĐT) từ chunk của đơn vị khác
                 dù tên có vẻ tương tự.
+            - Hãy phân biệt rõ thực thể 'Trường' (toàn trường/cơ sở chính) và 'Phân hiệu tại TP.HCM/UTC2", Nếu tài liệu chỉ nói chung về 'Trường' mà không chỉ đích danh 'Phân hiệu',
+              - Trong trường hợp người dùng hỏi về Phân hiệu nhưng tài liệu chỉ có số liệu của Toàn trường, bạn phải trả lời rõ ràng theo biểu mẫu sau: 
+  "Hiện tại tài liệu chưa có số liệu riêng của Phân hiệu vào mốc thời gian này, [Nếu có số liệu Phân hiệu ở mốc khác thì bổ sung thêm]".
             - Không cần phải chào hỏi mỗi lần trả lời, vào thẳng vấn đề chính
             - Nếu câu hỏi chỉ là chào hỏi, hoặc các câu xã giao, hãy trả lời bằng lời chào thân thiện, giới thiệu về bản thân chatbot, KHÔNG kéo thêm thông tin chi tiết trong context.
             - Khi có thể, hãy **giải thích thêm bối cảnh hoặc gợi ý bước tiếp theo**, ví dụ:  
@@ -882,62 +884,46 @@ class TrainingService:
             if suggestion:
                 if suggestion["source"] == "training_qa":
 
-                    response_text = f"""
-                    ## Không tìm thấy thông tin trong mục hiện tại.
-
-
-                    Mình đã kiểm tra trong phạm vi **đối tượng** và **lĩnh vực** bạn đang chọn, 
-                    nhưng hiện tại hệ thống chưa có dữ liệu phù hợp để trả lời chính xác câu hỏi này.
-
-
-                    Gợi ý nội dung liên quan:                 
-
-
-                    Mình phát hiện câu hỏi của bạn có thể thuộc phạm vi khác trong hệ thống: 
-
-
-                    - **Đối tượng phù hợp**: {suggestion['audience_names']}
-
-                    - **Lĩnh vực liên quan**: {suggestion['intent_name']}.
-
-                    Bạn có thể làm gì tiếp theo?
-
-                    - **Chuyển sang đúng đối tượng / lĩnh vực** để xem thông tin chính xác hơn
-
-                    - Tiếp tục đặt câu hỏi chi tiết hơn (ví dụ: nội dung cụ thể bạn muốn biết)
-
-                    - Nếu cần hỗ trợ sâu hơn, bạn có thể liên hệ trực tiếp bộ phận tư vấn của trường
-
-                    """
+                    response_text = (
+                        f"## Không tìm thấy thông tin trong mục hiện tại.\n\n"
+                        f"Mình đã kiểm tra trong phạm vi **đối tượng** và **lĩnh vực** bạn đang chọn, "
+                        f"nhưng hiện tại hệ thống chưa có dữ liệu phù hợp để trả lời chính xác câu hỏi này.\n\n"
+                        f"Gợi ý nội dung liên quan:\n\n"
+                        f"Mình phát hiện câu hỏi của bạn có thể thuộc phạm vi khác trong hệ thống:\n\n"
+                        f"- **Đối tượng phù hợp**: {suggestion['audience_names']}\n"
+                        f"- **Lĩnh vực liên quan**: {suggestion['intent_name']}\n\n"
+                        f"Bạn có thể làm gì tiếp theo?\n\n"
+                        f"- **Chuyển sang đúng đối tượng / lĩnh vực** để xem thông tin chính xác hơn\n"
+                        f"- Tiếp tục đặt câu hỏi chi tiết hơn (ví dụ: nội dung cụ thể bạn muốn biết)\n"
+                        f"- Nếu cần hỗ trợ sâu hơn, bạn có thể liên hệ trực tiếp bộ phận tư vấn của trường\n"
+                    )
                 else:
                     preview = suggestion.get("chunk_preview", "")[:200]
 
-                    response_text = f"""
-                    ## Không tìm thấy thông tin trong mục hiện tại.
-                    Mình đã kiểm tra trong phạm vi **đối tượng** và **lĩnh vực** bạn đang chọn, 
-                    nhưng hiện tại hệ thống chưa có dữ liệu phù hợp để trả lời chính xác câu hỏi này.
-                    Gợi ý nội dung liên quan. \n
-                   
-                    Mình phát hiện câu hỏi của bạn có thể thuộc phạm vi khác trong hệ thống:
-                    - **Đối tượng phù hợp**: {suggestion['audience_names']}
-                    - **Lĩnh vực liên quan**: {suggestion['intent_name']}.
+                    response_text = (
+                        f"## Không tìm thấy thông tin trong mục hiện tại.\n"
+                        f"Mình đã kiểm tra trong phạm vi **đối tượng** và **lĩnh vực** bạn đang chọn, "
+                        f"nhưng hiện tại hệ thống chưa có dữ liệu phù hợp để trả lời chính xác câu hỏi này.\n\n"
+                        f"Gợi ý nội dung liên quan.\n\n"
+                        f"Mình phát hiện câu hỏi của bạn có thể thuộc phạm vi khác trong hệ thống:\n"
+                        f"- **Đối tượng phù hợp**: {suggestion['audience_names']}\n"
+                        f"- **Lĩnh vực liên quan**: {suggestion['intent_name']}\n\n"
+                        f"Nội dung gần đúng:\n"
+                        f'"{preview}..."\n\n'
+                        f"## Bạn có thể làm gì tiếp theo?\n\n"
+                        f"- **Chuyển sang đúng đối tượng / lĩnh vực** để xem thông tin chính xác hơn\n"
+                        f"- Tiếp tục đặt câu hỏi chi tiết hơn (ví dụ: nội dung cụ thể bạn muốn biết)\n"
+                        f"- Nếu cần hỗ trợ sâu hơn, bạn có thể liên hệ trực tiếp bộ phận tư vấn của trường\n"
+                    )
 
-                    Nội dung gần đúng:
-                    "{preview}..."
+                # for line in response_text.splitlines(keepends=True):
+                #     yield line
+                #     await asyncio.sleep(0)
 
-                    Bạn có thể làm gì tiếp theo?
-
-                    - **Chuyển sang đúng đối tượng / lĩnh vực** để xem thông tin chính xác hơn
-                    - Tiếp tục đặt câu hỏi chi tiết hơn (ví dụ: nội dung cụ thể bạn muốn biết)
-                    - Nếu cần hỗ trợ sâu hơn, bạn có thể liên hệ trực tiếp bộ phận tư vấn của trường
-
-                    """
-                    # 👉 stream giả lập (không cần LLM)
-                for token in response_text.split():
-                    yield token + " "
-                    await asyncio.sleep(0)
-
-                full_response = response_text
+                words = response_text.split(" ")
+                for word in words:
+                    yield word + " "
+                    await asyncio.sleep(0.02)  # 30ms/từ ≈ tốc độ gõ tự nhiên
 
             else:
 
@@ -2067,7 +2053,7 @@ class TrainingService:
             if doc_id not in allowed_ids:
                 continue
             chunk_text = (payload.get("chunk_text") or "").strip().replace("\n", " ")
-            snippet_lines.append(f"{idx}. [DOC_ID={doc_id}] {chunk_text[:500]}")
+            snippet_lines.append(f"{idx}. [DOC_ID={doc_id}] {chunk_text}")
 
         context_for_citation = "\n".join(snippet_lines)
         prompt = f"""
