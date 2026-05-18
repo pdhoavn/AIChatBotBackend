@@ -150,10 +150,10 @@ def check_file_exists_public(file_path: str) -> Path:
 def api_create_training_qa(
     payload: TrainingQuestionRequest,
     db: Session = Depends(get_db),
-    current_user_id: int = 1,
+    current_user: entities.Users = Depends(check_leader_permission),
 ):
     service = TrainingService()
-
+    current_user_id = current_user.user_id
     qa = service.create_training_qa(
         db=db,
         intent_id=payload.intent_id,
