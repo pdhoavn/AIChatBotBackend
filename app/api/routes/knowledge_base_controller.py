@@ -45,6 +45,15 @@ MEDIA_TYPE_MAPPING = {
 }
 
 
+def check_leader_permission(current_user: entities.Users = Depends(get_current_user)):
+    """Check if user is Admin or Consultant Leader"""
+    if not is_admin_or_leader(current_user):
+        raise HTTPException(
+            status_code=403, detail="Only Admin or Consultant Leader can review content"
+        )
+    return current_user
+
+
 def check_view_permission(current_user: entities.Users = Depends(get_current_user)):
     """Check if user has permission to view training questions (Admin, Consultant, or Admission Official)"""
     if not current_user:
@@ -168,7 +177,7 @@ async def upload_document(
     title: str = Form(None),
     category: str = Form(None),
     target_audiences: List[str] = Form([]),
-    current_user_id: int = Form(1),
+    current_user: entities.Users = Depends(check_leader_permission),
     db: Session = Depends(get_db),
 ):
     print(f"\n[1] BẮT ĐẦU REQUEST Upload. Filename: {file.filename}", flush=True)
@@ -245,7 +254,10 @@ async def upload_document(
     try:
         service = TrainingService()
         print("[9] Đang lưu vào Database...", flush=True)
-        doc_title = title.strip() if title and title.strip() else (file.filename or "Untitled")
+        doc_title = (
+            title.strip() if title and title.strip() else (file.filename or "Untitled")
+        )
+        current_user_id = current_user.user_id
         print(f"User id submid: {current_user_id}")
         doc = service.create_document(
             db=db,
@@ -281,7 +293,7 @@ async def upload_document_ocr(
     file: UploadFile = File(...),
     title: str = Form(None),
     target_audiences: List[str] = Form([]),
-    current_user_id: int = Form(1),
+    current_user: entities.Users = Depends(check_leader_permission),
     db: Session = Depends(get_db),
 ):
     """
@@ -290,7 +302,7 @@ async def upload_document_ocr(
     Poll GET /knowledge/documents/{id}/task-status for progress.
     """
     ext = Path(file.filename).suffix.lower()
-    if ext != '.pdf':
+    if ext != ".pdf":
         raise HTTPException(status_code=400, detail="OCR only supports PDF files")
 
     file_content = await file.read()
@@ -304,8 +316,11 @@ async def upload_document_ocr(
     with open(file_path, "wb") as f:
         f.write(file_content)
 
-    doc_title = title.strip() if title and title.strip() else (file.filename or "Untitled")
-
+    doc_title = (
+        title.strip() if title and title.strip() else (file.filename or "Untitled")
+    )
+    current_user_id = current_user.user_id
+    print(f"User_id: {current_user_id}")
     # Save doc as draft
     service = TrainingService()
     doc = service.create_document(
@@ -335,9 +350,12 @@ async def upload_document_ocr(
 
     def _run_ocr():
         from app.models.database import SessionLocal
+
         bdb = SessionLocal()
         try:
-            btask = bdb.query(entities.DocumentTask).filter_by(task_id=task.task_id).first()
+            btask = (
+                bdb.query(entities.DocumentTask).filter_by(task_id=task.task_id).first()
+            )
             if not btask:
                 return
             btask.status = "processing"
@@ -347,6 +365,7 @@ async def upload_document_ocr(
             from PIL import Image
             from app.core.config import settings
             import io
+
             pytesseract.pytesseract.tesseract_cmd = settings.TESSERACT_CMD_PATH
 
             pdf_doc = fitz.open(stream=file_content, filetype="pdf")
@@ -383,10 +402,18 @@ async def upload_document_ocr(
                 txt_path = str(upload_dir / f"ocr_text_{uuid.uuid4().hex}.txt")
                 with open(txt_path, "w", encoding="utf-8") as f:
                     f.write(full_text)
-                bdoc = bdb.query(entities.KnowledgeBaseDocument).filter_by(document_id=doc.document_id).first()
+                bdoc = (
+                    bdb.query(entities.KnowledgeBaseDocument)
+                    .filter_by(document_id=doc.document_id)
+                    .first()
+                )
                 bdoc.path_txt = txt_path
             else:
-                bdoc = bdb.query(entities.KnowledgeBaseDocument).filter_by(document_id=doc.document_id).first()
+                bdoc = (
+                    bdb.query(entities.KnowledgeBaseDocument)
+                    .filter_by(document_id=doc.document_id)
+                    .first()
+                )
                 bdoc.content = full_text
 
             btask.status = "completed"
@@ -395,7 +422,9 @@ async def upload_document_ocr(
 
         except Exception as e:
             bdb.rollback()
-            btask = bdb.query(entities.DocumentTask).filter_by(task_id=task.task_id).first()
+            btask = (
+                bdb.query(entities.DocumentTask).filter_by(task_id=task.task_id).first()
+            )
             if btask:
                 btask.status = "failed"
                 btask.error_message = str(e)
@@ -412,21 +441,22 @@ async def upload_document_ocr(
         "status": task.status,
     }
 
+
 @router.get(
-    "/training_questions/deleted",
-    response_model=List[TrainingQuestionDeletedResponse]
+    "/training_questions/deleted", response_model=List[TrainingQuestionDeletedResponse]
 )
 def get_deleted_training_questions(db: Session = Depends(get_db)):
     service = TrainingService()
     return service.get_deleted_questions(db)
 
+
 @router.get(
-    "/documents/deleted",
-    response_model=List[KnowledgeBaseDocumentDeletedResponse]
+    "/documents/deleted", response_model=List[KnowledgeBaseDocumentDeletedResponse]
 )
 def get_deleted_documents(db: Session = Depends(get_db)):
     service = TrainingService()
     return service.get_deleted_documents(db)
+
 
 @router.get("/training_questions", response_model=List[TrainingQuestionResponse])
 def get_all_training_questions(
@@ -467,8 +497,12 @@ def get_all_training_questions(
                 "status": tqa.status,
                 "created_at": tqa.created_at.date() if tqa.created_at else None,
                 "approved_at": tqa.approved_at.date() if tqa.approved_at else None,
-                "created_by_name": tqa.created_by_user.full_name if tqa.created_by_user else None,
-                "approved_by_name": tqa.approved_by_user.full_name if tqa.approved_by_user else None,
+                "created_by_name": (
+                    tqa.created_by_user.full_name if tqa.created_by_user else None
+                ),
+                "approved_by_name": (
+                    tqa.approved_by_user.full_name if tqa.approved_by_user else None
+                ),
                 "reject_reason": getattr(tqa, "reject_reason", None),
                 "target_audiences": getattr(tqa, "target_audiences", []),
             }
@@ -495,11 +529,9 @@ def get_all_documents(
     # Build query with intent joined to avoid N+1, defer heavy content column
     query = db.query(entities.KnowledgeBaseDocument).options(
         joinedload(entities.KnowledgeBaseDocument.intent),
-        defer(entities.KnowledgeBaseDocument.content)
+        defer(entities.KnowledgeBaseDocument.content),
     )
-    query = query.filter(
-    entities.KnowledgeBaseDocument.status != "deleted"
-    )
+    query = query.filter(entities.KnowledgeBaseDocument.status != "deleted")
     # Apply status filter if provided
     if status:
         query = query.filter(entities.KnowledgeBaseDocument.status == status)
@@ -669,7 +701,6 @@ def get_document_by_id(
         "status": document.status,
         "reviewed_by": document.reviewed_by,
         "reviewed_at": document.reviewed_at.date() if document.reviewed_at else None,
-        
         "reject_reason": getattr(document, "reject_reason", None),
         "target_audiences": getattr(document, "target_audiences", []),
     }
@@ -710,15 +741,6 @@ def is_admin_or_leader(user: entities.Users) -> bool:
     return is_admin or is_consultant_leader
 
 
-def check_leader_permission(current_user: entities.Users = Depends(get_current_user)):
-    """Check if user is Admin or Consultant Leader"""
-    if not is_admin_or_leader(current_user):
-        raise HTTPException(
-            status_code=403, detail="Only Admin or Consultant Leader can review content"
-        )
-    return current_user
-
-
 @router.get(
     "/documents/pending-review", response_model=List[KnowledgeBaseDocumentResponse]
 )
@@ -730,12 +752,15 @@ def get_pending_documents(
     Get all documents pending review (status=draft).
     Only Admin or ConsultantLeader can access this endpoint.
     """
-    documents = db.query(entities.KnowledgeBaseDocument).options(
-        joinedload(entities.KnowledgeBaseDocument.intent),
-        defer(entities.KnowledgeBaseDocument.content)
-    ).filter(
-        entities.KnowledgeBaseDocument.status == 'draft'
-    ).all()
+    documents = (
+        db.query(entities.KnowledgeBaseDocument)
+        .options(
+            joinedload(entities.KnowledgeBaseDocument.intent),
+            defer(entities.KnowledgeBaseDocument.content),
+        )
+        .filter(entities.KnowledgeBaseDocument.status == "draft")
+        .all()
+    )
     return [
         {
             "document_id": doc.document_id,
@@ -800,7 +825,9 @@ def api_approve_document(
     """
     document = get_document_or_404(document_id, db)
     if document.status != "draft":
-        raise HTTPException(status_code=400, detail="Only draft documents can be approved")
+        raise HTTPException(
+            status_code=400, detail="Only draft documents can be approved"
+        )
 
     # Create task record
     task = entities.DocumentTask(
@@ -818,16 +845,23 @@ def api_approve_document(
     def _run_approve():
         import time as _time
         from app.models.database import SessionLocal
+
         bdb = SessionLocal()
         reviewer_id = current_user.user_id
         try:
-            btask = bdb.query(entities.DocumentTask).filter_by(task_id=task.task_id).first()
+            btask = (
+                bdb.query(entities.DocumentTask).filter_by(task_id=task.task_id).first()
+            )
             if not btask:
                 return
             btask.status = "processing"
             bdb.commit()
 
-            bdoc = bdb.query(entities.KnowledgeBaseDocument).filter_by(document_id=document_id).first()
+            bdoc = (
+                bdb.query(entities.KnowledgeBaseDocument)
+                .filter_by(document_id=document_id)
+                .first()
+            )
             if not bdoc:
                 btask.status = "failed"
                 btask.error_message = "Document not found"
@@ -850,14 +884,20 @@ def api_approve_document(
             audience_ids = [a.id for a in audiences]
             filtered_audience_names = [a.present_name for a in audiences]
 
-            intent = bdb.query(entities.Intent).filter_by(intent_id=bdoc.intend_id).first()
+            intent = (
+                bdb.query(entities.Intent).filter_by(intent_id=bdoc.intend_id).first()
+            )
 
             # Get content
             content = getattr(bdoc, "content", None)
             if not content:
                 txt_path = getattr(bdoc, "path_txt", None)
                 if txt_path:
-                    resolved = os.path.join(os.getcwd(), txt_path) if not os.path.isabs(txt_path) else txt_path
+                    resolved = (
+                        os.path.join(os.getcwd(), txt_path)
+                        if not os.path.isabs(txt_path)
+                        else txt_path
+                    )
                     if os.path.exists(resolved):
                         with open(resolved, "r", encoding="utf-8") as f:
                             content = f.read()
@@ -870,7 +910,10 @@ def api_approve_document(
 
             # Split
             from langchain_text_splitters import RecursiveCharacterTextSplitter
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000, chunk_overlap=200
+            )
             chunks = text_splitter.split_text(content)
             total = len(chunks)
             btask.total_items = total
@@ -916,7 +959,9 @@ def api_approve_document(
 
         except Exception as e:
             bdb.rollback()
-            btask = bdb.query(entities.DocumentTask).filter_by(task_id=task.task_id).first()
+            btask = (
+                bdb.query(entities.DocumentTask).filter_by(task_id=task.task_id).first()
+            )
             if btask:
                 btask.status = "failed"
                 btask.error_message = str(e)
@@ -1032,8 +1077,12 @@ def get_pending_training_questions(
             "approved_at": q.approved_at.date() if q.approved_at else None,
             "created_by": q.created_by,
             "approved_by": q.approved_by,
-            "created_by_name": q.created_by_user.full_name if q.created_by_user else None,
-            "approved_by_name": q.approved_by_user.full_name if q.approved_by_user else None,
+            "created_by_name": (
+                q.created_by_user.full_name if q.created_by_user else None
+            ),
+            "approved_by_name": (
+                q.approved_by_user.full_name if q.approved_by_user else None
+            ),
             "reject_reason": getattr(q, "reject_reason", None),
             "target_audiences": getattr(q, "target_audiences", []),
         }
