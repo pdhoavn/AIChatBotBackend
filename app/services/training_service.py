@@ -29,6 +29,7 @@ from app.models.entities import (
     RiasecResult,
     TargetAudience,
     TrainingQuestionAnswer,
+    Users,
 )
 from app.models.database import SessionLocal
 from sqlalchemy.exc import SQLAlchemyError
@@ -372,9 +373,8 @@ class TrainingService:
           • Không suy diễn
           • Không trả lời chung chung
           • Không chỉ dựa vào trùng từ khóa
-        - Chỉ trả về "document" nếu NỘI DUNG của document base THỰC SỰ có thông tin trả lời câu hỏi và thông tin đó đúng ý định của người dùng muốn biết
-        - Trước khi trả về "document", hãy tự hỏi và suy luận kĩ càng:
-              "Nội dung của Document base có trực tiếp liệt kê hoặc mô tả thông tin mà người dùng hỏi không?"
+        - Chỉ trả về "document" nếu NỘI DUNG của document base THỰC SỰ có thông tin trả lời câu hỏi và thông tin đó đúng ý định của câu query của người dùng muốn biết
+        - (Tự hỏi: Context có thực sự chứa câu trả lời cho câu truy vấn của người dùng không? Nếu có -> "document").
         - Check qua tầng 2 nếu:
             • chỉ trùng từ khóa nhưng không cùng ý nghĩa
             • document không chứa dữ liệu cần thiết để trả lời
@@ -552,7 +552,7 @@ class TrainingService:
             memory = memory_service.get_memory(session_id)
             mem_vars = memory.load_memory_variables({})
             chat_history = mem_vars.get("chat_history", "")
-
+            print(f"Context: {context}")
             prompt = f"""Bạn là một chatbot tra cứu thông tin chuyên nghiệp của trường {self.university_name}
             Đây là đoạn hội thoại trước: 
             {chat_history}
@@ -567,10 +567,18 @@ class TrainingService:
             - Trả lời theo định dạng Markdown: dùng tiêu đề ##, gạch đầu dòng -, xuống dòng rõ ràng.
             - Nếu trong câu trả lời có đường dẫn thì hãy markdown đường dẫn
             - Hãy tạo ra câu trả lời không quá dài, gói gọn ý chính, chỉ khi câu hỏi yêu cầu "chi tiết" thì mới tạo câu trả lời đầy đủ
-            - Bạn là chatbot tra cứu thông tin chuyên nghiệp của trường {self.university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
-            - Nếu không tìm thấy thông tin, hãy nói rõ và gợi ý liên hệ trực tiếp nhân viên tư vấn
+            - Bạn là chatbot tra cứu thông tin chuyên nghiệp của {self.university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác hay phân hiệu khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
+            - Nếu không tìm thấy thông tin → Nói rõ hệ thống chưa có dữ liệu, → KHÔNG tự chọn email/SĐT/fanpage từ context để gợi ý
+                trừ khi chunk đó TRỰC TIẾP xử lý đúng vấn đề được hỏi.
+                Ví dụ: hỏi lịch thi → KHÔNG dùng email phòng ký túc xá
+            - Khi trả lời về một đơn vị/phòng ban cụ thể, CHỈ sử dụng thông tin
+                từ chunk có heading KHỚP CHÍNH XÁC với tên đơn vị được hỏi.
+                KHÔNG lấy thông tin (website, email, SĐT) từ chunk của đơn vị khác
+                dù tên có vẻ tương tự.
+            - Hãy phân biệt rõ thực thể 'Trường' (toàn trường/cơ sở chính) và 'Phân hiệu tại TP.HCM/UTC2", Nếu tài liệu chỉ nói chung về 'Trường' mà không chỉ đích danh 'Phân hiệu',
+              - Trong trường hợp người dùng hỏi về Phân hiệu nhưng tài liệu chỉ có số liệu của Toàn trường, bạn phải trả lời rõ ràng theo biểu mẫu sau: 
+  "Hiện tại tài liệu chưa có số liệu riêng của Phân hiệu vào mốc thời gian này, [Nếu có số liệu Phân hiệu ở mốc khác thì bổ sung thêm]".
             - Không cần phải chào hỏi mỗi lần trả lời, vào thẳng vấn đề chính
-            -gửi full nội dung context
             - Nếu câu hỏi chỉ là chào hỏi, hoặc các câu xã giao, hãy trả lời bằng lời chào thân thiện, giới thiệu về bản thân chatbot, KHÔNG kéo thêm thông tin chi tiết trong context.
             - Khi có thể, hãy **giải thích thêm bối cảnh hoặc gợi ý bước tiếp theo**, ví dụ:  
                 “Bạn muốn mình gửi danh sách ngành đào tạo kèm chuyên ngành chi tiết không?”  
@@ -876,62 +884,46 @@ class TrainingService:
             if suggestion:
                 if suggestion["source"] == "training_qa":
 
-                    response_text = f"""
-                    ## Không tìm thấy thông tin trong mục hiện tại.
-
-
-                    Mình đã kiểm tra trong phạm vi **đối tượng** và **lĩnh vực** bạn đang chọn, 
-                    nhưng hiện tại hệ thống chưa có dữ liệu phù hợp để trả lời chính xác câu hỏi này.
-
-
-                    Gợi ý nội dung liên quan:                 
-
-
-                    Mình phát hiện câu hỏi của bạn có thể thuộc phạm vi khác trong hệ thống: 
-
-
-                    - **Đối tượng phù hợp**: {suggestion['audience_names']}
-
-                    - **Lĩnh vực liên quan**: {suggestion['intent_name']}.
-
-                    Bạn có thể làm gì tiếp theo?
-
-                    - **Chuyển sang đúng đối tượng / lĩnh vực** để xem thông tin chính xác hơn
-
-                    - Tiếp tục đặt câu hỏi chi tiết hơn (ví dụ: nội dung cụ thể bạn muốn biết)
-
-                    - Nếu cần hỗ trợ sâu hơn, bạn có thể liên hệ trực tiếp bộ phận tư vấn của trường
-
-                    """
+                    response_text = (
+                        f"## Không tìm thấy thông tin trong mục hiện tại.\n\n"
+                        f"Mình đã kiểm tra trong phạm vi **đối tượng** và **lĩnh vực** bạn đang chọn, "
+                        f"nhưng hiện tại hệ thống chưa có dữ liệu phù hợp để trả lời chính xác câu hỏi này.\n\n"
+                        f"Gợi ý nội dung liên quan:\n\n"
+                        f"Mình phát hiện câu hỏi của bạn có thể thuộc phạm vi khác trong hệ thống:\n\n"
+                        f"- **Đối tượng phù hợp**: {suggestion['audience_names']}\n"
+                        f"- **Lĩnh vực liên quan**: {suggestion['intent_name']}\n\n"
+                        f"Bạn có thể làm gì tiếp theo?\n\n"
+                        f"- **Chuyển sang đúng đối tượng / lĩnh vực** để xem thông tin chính xác hơn\n"
+                        f"- Tiếp tục đặt câu hỏi chi tiết hơn (ví dụ: nội dung cụ thể bạn muốn biết)\n"
+                        f"- Nếu cần hỗ trợ sâu hơn, bạn có thể liên hệ trực tiếp bộ phận tư vấn của trường\n"
+                    )
                 else:
                     preview = suggestion.get("chunk_preview", "")[:200]
 
-                    response_text = f"""
-                    ## Không tìm thấy thông tin trong mục hiện tại.
-                    Mình đã kiểm tra trong phạm vi **đối tượng** và **lĩnh vực** bạn đang chọn, 
-                    nhưng hiện tại hệ thống chưa có dữ liệu phù hợp để trả lời chính xác câu hỏi này.
-                    Gợi ý nội dung liên quan. \n
-                   
-                    Mình phát hiện câu hỏi của bạn có thể thuộc phạm vi khác trong hệ thống:
-                    - **Đối tượng phù hợp**: {suggestion['audience_names']}
-                    - **Lĩnh vực liên quan**: {suggestion['intent_name']}.
+                    response_text = (
+                        f"## Không tìm thấy thông tin trong mục hiện tại.\n"
+                        f"Mình đã kiểm tra trong phạm vi **đối tượng** và **lĩnh vực** bạn đang chọn, "
+                        f"nhưng hiện tại hệ thống chưa có dữ liệu phù hợp để trả lời chính xác câu hỏi này.\n\n"
+                        f"Gợi ý nội dung liên quan.\n\n"
+                        f"Mình phát hiện câu hỏi của bạn có thể thuộc phạm vi khác trong hệ thống:\n"
+                        f"- **Đối tượng phù hợp**: {suggestion['audience_names']}\n"
+                        f"- **Lĩnh vực liên quan**: {suggestion['intent_name']}\n\n"
+                        f"Nội dung gần đúng:\n"
+                        f'"{preview}..."\n\n'
+                        f"## Bạn có thể làm gì tiếp theo?\n\n"
+                        f"- **Chuyển sang đúng đối tượng / lĩnh vực** để xem thông tin chính xác hơn\n"
+                        f"- Tiếp tục đặt câu hỏi chi tiết hơn (ví dụ: nội dung cụ thể bạn muốn biết)\n"
+                        f"- Nếu cần hỗ trợ sâu hơn, bạn có thể liên hệ trực tiếp bộ phận tư vấn của trường\n"
+                    )
 
-                    Nội dung gần đúng:
-                    "{preview}..."
+                # for line in response_text.splitlines(keepends=True):
+                #     yield line
+                #     await asyncio.sleep(0)
 
-                    Bạn có thể làm gì tiếp theo?
-
-                    - **Chuyển sang đúng đối tượng / lĩnh vực** để xem thông tin chính xác hơn
-                    - Tiếp tục đặt câu hỏi chi tiết hơn (ví dụ: nội dung cụ thể bạn muốn biết)
-                    - Nếu cần hỗ trợ sâu hơn, bạn có thể liên hệ trực tiếp bộ phận tư vấn của trường
-
-                    """
-                    # 👉 stream giả lập (không cần LLM)
-                for token in response_text.split():
-                    yield token + " "
-                    await asyncio.sleep(0)
-
-                full_response = response_text
+                words = response_text.split(" ")
+                for word in words:
+                    yield word + " "
+                    await asyncio.sleep(0.02)  # 30ms/từ ≈ tốc độ gõ tự nhiên
 
             else:
 
@@ -1121,6 +1113,7 @@ class TrainingService:
         answer: str,
         target_audiences: List[str],
         created_by: int,
+        is_private: Optional[bool] = False,
     ):
         qa = TrainingQuestionAnswer(
             question=question,
@@ -1128,6 +1121,7 @@ class TrainingService:
             intent_id=intent_id,
             target_audiences=target_audiences,
             created_by=created_by,
+            is_private=is_private,
             status="draft",
         )
         db.add(qa)
@@ -1178,6 +1172,7 @@ class TrainingService:
                         "question_text": qa.question,
                         "answer_text": qa.answer,
                         "type": "training_qa",
+                        "is_private": qa.is_private or False,
                     },
                 )
             ],
@@ -1191,7 +1186,7 @@ class TrainingService:
 
         return {"postgre_question_id": qa.question_id, "qdrant_question_id": point_id}
 
-    def delete_training_qa(self, db: Session, qa_id: int):
+    def delete_training_qa(self, db: Session, qa_id: int, current_user: Users):
 
         qa = db.query(TrainingQuestionAnswer).filter_by(question_id=qa_id).first()
         if not qa:
@@ -1211,8 +1206,7 @@ class TrainingService:
             ),
         )
 
-        # Xóa trong DB
-        db.delete(qa)
+        qa.deleted_by = current_user.user_id
         db.commit()
 
         return {"deleted_question_id": qa_id}
@@ -1225,6 +1219,7 @@ class TrainingService:
         intend_id: int,
         target_audiences: List[str],
         created_by: int,
+        is_private: Optional[bool] = False,
         content: Optional[str] = None,
         is_ocr: bool = False,
         path_txt: Optional[str] = None,
@@ -1235,6 +1230,7 @@ class TrainingService:
             intend_id=intend_id,
             target_audiences=target_audiences,
             status="draft",
+            is_private=is_private,
             created_by=created_by,
             content=content,
             is_ocr=is_ocr,
@@ -1360,6 +1356,7 @@ class TrainingService:
                             "intent_name": intent.intent_name if intent else None,
                             "metadata": metadata or {},
                             "type": "document",
+                            "is_private": doc.is_private or False,
                         },
                     )
                 ],
@@ -1466,7 +1463,9 @@ class TrainingService:
                 yield f"data: {json.dumps({'event': 'progress', 'chunk': i + 1, 'total': total, 'progress': progress})}\n\n"
 
                 loop = asyncio.get_event_loop()
-                embed_future = loop.run_in_executor(None, self.embeddings.embed_query, chunk)
+                embed_future = loop.run_in_executor(
+                    None, self.embeddings.embed_query, chunk
+                )
                 deadline = time.monotonic() + 120
                 embedding = None
                 while not embed_future.done():
@@ -1497,6 +1496,7 @@ class TrainingService:
                                 "intent_id": doc.intend_id,
                                 "intent_name": intent.intent_name if intent else None,
                                 "type": "document",
+                                "is_private": doc.is_private or False,
                             },
                         )
                     ],
@@ -1516,7 +1516,7 @@ class TrainingService:
         finally:
             db.close()
 
-    def delete_document(self, db: Session, document_id: int):
+    def delete_document(self, db: Session, document_id: int, current_user: Users):
         doc = db.query(KnowledgeBaseDocument).filter_by(document_id=document_id).first()
         if not doc:
             raise Exception("Document not found")
@@ -1540,8 +1540,8 @@ class TrainingService:
         dl = db.query(DocumentChunk).filter_by(document_id=document_id)
         if dl:
             dl.delete()
-        # Xóa document trong DB
-        db.delete(doc)
+
+        doc.deleted_by = current_user.user_id
         db.commit()
 
         return {"deleted_document_id": document_id}
@@ -1582,6 +1582,89 @@ class TrainingService:
             chunk_ids.append(point_id)
 
         return chunk_ids
+
+    def get_deleted_questions(self, db: Session):
+        results = (
+            db.query(TrainingQuestionAnswer)
+            .filter(TrainingQuestionAnswer.status == "deleted")
+            .all()
+        )
+
+        response = []
+
+        for item in results:
+            response.append(
+                {
+                    "question_id": item.question_id,
+                    "question": item.question,
+                    "answer": item.answer,
+                    "intent_id": item.intent.intent_id if item.intent else None,
+                    "intent_name": item.intent.intent_name if item.intent else None,
+                    "status": item.status,
+                    "created_at": item.created_at,
+                    "approved_at": item.approved_at,
+                    "created_by": item.created_by,
+                    "approved_by": item.approved_by,
+                    "created_by_name": (
+                        item.created_by_user.full_name if item.created_by_user else None
+                    ),
+                    "approved_by_name": (
+                        item.approved_by_user.full_name
+                        if item.approved_by_user
+                        else None
+                    ),
+                    "deleted_by": item.deleted_by,
+                    "deleted_by_name": (
+                        item.deleted_by_user.full_name if item.deleted_by_user else None
+                    ),
+                    "reject_reason": getattr(item, "reject_reason", None),
+                    "target_audiences": getattr(item, "target_audiences", []),
+                }
+            )
+
+        return response
+
+    def get_deleted_documents(self, db: Session):
+        results = (
+            db.query(KnowledgeBaseDocument)
+            .filter(KnowledgeBaseDocument.status == "deleted")
+            .all()
+        )
+
+        response = []
+
+        for item in results:
+            response.append(
+                {
+                    "document_id": item.document_id,
+                    "title": item.title,
+                    "file_path": item.file_path,
+                    "category": item.category,
+                    "created_at": item.created_at,
+                    "updated_at": item.updated_at,
+                    "created_by": item.created_by,
+                    "created_by_name": (item.author.full_name if item.author else None),
+                    "reviewed_by": item.reviewed_by,
+                    "reviewed_by_name": (
+                        item.reviewer.full_name if item.reviewer else None
+                    ),
+                    "reviewed_at": item.reviewed_at,
+                    "deleted_by": item.deleted_by,
+                    "deleted_by_name": (
+                        item.deleter.full_name if item.deleter else None
+                    ),
+                    "reject_reason": getattr(item, "reject_reason", None),
+                    "target_audiences": getattr(item, "target_audiences", []),
+                    "content": item.content,
+                    "is_ocr": item.is_ocr,
+                    "path_txt": item.path_txt,
+                    "status": item.status,
+                    "intent_id": item.intent.intent_id if item.intent else None,
+                    "intent_name": item.intent.intent_name if item.intent else None,
+                }
+            )
+
+        return response
 
     async def cross_scope_search(
         self, query: str, top_k: int = 3, query_embedding: Optional[List[float]] = None
@@ -1913,6 +1996,13 @@ class TrainingService:
             for document_id in document_ids
         ]
 
+    def has_private_content(chunks: list) -> bool:
+        return any(
+            chunk.payload.get("is_private", False)
+            for chunk in chunks
+            if hasattr(chunk, "payload")
+        )
+
     def build_document_search_result(self, doc_results: List[Any]) -> Dict[str, Any]:
         """
         Build a stable document-search response object used by chat pipelines.
@@ -1977,7 +2067,7 @@ class TrainingService:
             if doc_id not in allowed_ids:
                 continue
             chunk_text = (payload.get("chunk_text") or "").strip().replace("\n", " ")
-            snippet_lines.append(f"{idx}. [DOC_ID={doc_id}] {chunk_text[:500]}")
+            snippet_lines.append(f"{idx}. [DOC_ID={doc_id}] {chunk_text}")
 
         context_for_citation = "\n".join(snippet_lines)
         prompt = f"""

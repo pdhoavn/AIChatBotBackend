@@ -1,4 +1,12 @@
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends, Request
+from app.core.security import get_current_user
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+    Depends,
+    Request,
+)
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -15,11 +23,13 @@ from app.services.training_service import TrainingService
 
 class ChatStreamRequest(BaseModel):
     """Request body cho endpoint SSE /stream."""
+
     message: str
     session_id: Optional[int] = None
     user_id: Optional[int] = None
     audience_id: Optional[int] = None
     intent_id: Optional[int] = None
+
 
 router = APIRouter()
 # Tạo 1 instance dùng chung
@@ -363,7 +373,11 @@ def _sse_event(data: dict) -> str:
 
 
 @router.post("/stream")
-async def stream_chat(request: Request, body: ChatStreamRequest):
+async def stream_chat(
+    request: Request,
+    body: ChatStreamRequest,
+    current_user: dict = Depends(get_current_user),
+):
     """
     SSE endpoint thay thế cho WebSocket /ws/chat.
     Client gửi POST với message, nhận về stream SSE gồm các event:
@@ -385,16 +399,21 @@ async def stream_chat(request: Request, body: ChatStreamRequest):
     # Guest user/session có ID random không tồn tại trong DB
     # → reset None để service tự tạo mới (giống WS cũ)
     from app.models.entities import Users, ChatSession
+
     db_check = SessionLocal()
     try:
         if user_id:
-            user_exists = db_check.query(Users.user_id).filter(Users.user_id == user_id).first()
+            user_exists = (
+                db_check.query(Users.user_id).filter(Users.user_id == user_id).first()
+            )
             if not user_exists:
                 user_id = None
         if session_id:
-            session_exists = db_check.query(ChatSession.chat_session_id).filter(
-                ChatSession.chat_session_id == session_id
-            ).first()
+            session_exists = (
+                db_check.query(ChatSession.chat_session_id)
+                .filter(ChatSession.chat_session_id == session_id)
+                .first()
+            )
             if not session_exists:
                 session_id = None
     finally:
@@ -427,10 +446,12 @@ async def stream_chat(request: Request, body: ChatStreamRequest):
 
         if not enriched_query:
             _chat_log("skip_rag: empty_enriched_query", trace_id)
-            yield _sse_event({
-                "event": "chunk",
-                "content": "Mình chưa rõ ý bạn lắm, bạn có thể nói rõ hơn được không?",
-            })
+            yield _sse_event(
+                {
+                    "event": "chunk",
+                    "content": "Mình chưa rõ ý bạn lắm, bạn có thể nói rõ hơn được không?",
+                }
+            )
             yield _sse_event({"event": "done", "sources": [], "confidence": 0.0})
             return
 
@@ -449,10 +470,12 @@ async def stream_chat(request: Request, body: ChatStreamRequest):
             _chat_log(
                 f"hybrid_search_error type={type(e).__name__} message={e}", trace_id
             )
-            yield _sse_event({
-                "event": "chunk",
-                "content": "Hệ thống đang bận hoặc kho dữ liệu tạm thời không phản hồi. Bạn thử lại sau ít phút nhé.",
-            })
+            yield _sse_event(
+                {
+                    "event": "chunk",
+                    "content": "Hệ thống đang bận hoặc kho dữ liệu tạm thời không phản hồi. Bạn thử lại sau ít phút nhé.",
+                }
+            )
             yield _sse_event({"event": "done", "sources": [], "confidence": 0.0})
             return
 
@@ -476,13 +499,35 @@ async def stream_chat(request: Request, body: ChatStreamRequest):
             _chat_log(f"training_qa_relevance={relevance_ok}", trace_id)
 
             if relevance_ok:
+                # Check is_private cho training QA
+                is_private = top.payload.get("is_private", False)
+                if is_private and not current_user:
+                    _chat_log("private_qa_blocked: user not logged in", trace_id)
+                    yield _sse_event(
+                        {
+                            "event": "login_required",
+                            "message": "Nội dung này yêu cầu đăng nhập để xem.",
+                        }
+                    )
+                    yield _sse_event(
+                        {"event": "done", "sources": [], "confidence": 0.0}
+                    )
+                    return
+
                 async for chunk in sse_service.stream_response_from_qa(
-                    enriched_query, a_text, session_id, user_id, intent_id, message,
+                    enriched_query,
+                    a_text,
+                    session_id,
+                    user_id,
+                    intent_id,
+                    message,
                 ):
-                    yield _sse_event({
-                        "event": "chunk",
-                        "content": getattr(chunk, "content", str(chunk)),
-                    })
+                    yield _sse_event(
+                        {
+                            "event": "chunk",
+                            "content": getattr(chunk, "content", str(chunk)),
+                        }
+                    )
                 yield _sse_event(
                     {"event": "done", "sources": [], "confidence": confidence}
                 )
@@ -513,9 +558,17 @@ async def stream_chat(request: Request, body: ChatStreamRequest):
 
         context_chunks = result["response"]
         intent_id = result["intent_id"]
-        context = "\n\n".join(
-            [r.payload.get("chunk_text", "") for r in context_chunks]
-        )
+        if sse_service.has_private_content(context_chunks) and not current_user:
+            _chat_log("private_document_blocked: user not logged in", trace_id)
+            yield _sse_event(
+                {
+                    "event": "login_required",
+                    "message": "Nội dung này yêu cầu đăng nhập để xem.",
+                }
+            )
+            yield _sse_event({"event": "done", "sources": [], "confidence": 0.0})
+            return
+        context = "\n\n".join([r.payload.get("chunk_text", "") for r in context_chunks])
         _chat_log(
             f"context_precheck chunks={len(context_chunks)} chars={len(context)} intent_id={intent_id}",
             trace_id,
@@ -535,7 +588,12 @@ async def stream_chat(request: Request, body: ChatStreamRequest):
         if tier_source == "document" and confidence >= confidence_threshold:
             answer_text = ""
             async for chunk in sse_service.stream_response_from_context(
-                enriched_query, context, session_id, user_id, intent_id, message,
+                enriched_query,
+                context,
+                session_id,
+                user_id,
+                intent_id,
+                message,
             ):
                 piece = getattr(chunk, "content", str(chunk))
                 answer_text += piece
@@ -567,11 +625,13 @@ async def stream_chat(request: Request, body: ChatStreamRequest):
                     trace_id,
                 )
 
-            yield _sse_event({
-                "event": "done",
-                "sources": filtered_sources,
-                "confidence": confidence,
-            })
+            yield _sse_event(
+                {
+                    "event": "done",
+                    "sources": filtered_sources,
+                    "confidence": confidence,
+                }
+            )
             total_elapsed_ms = int((time.perf_counter() - request_start) * 1000)
             _chat_log(
                 f"done tier=document confidence={confidence:.6f} "
@@ -585,13 +645,13 @@ async def stream_chat(request: Request, body: ChatStreamRequest):
             async for chunk in sse_service.stream_response_from_recommendation(
                 user_id, session_id, enriched_query, message
             ):
-                yield _sse_event({
-                    "event": "chunk",
-                    "content": getattr(chunk, "content", str(chunk)),
-                })
-            yield _sse_event(
-                {"event": "done", "sources": [], "confidence": confidence}
-            )
+                yield _sse_event(
+                    {
+                        "event": "chunk",
+                        "content": getattr(chunk, "content", str(chunk)),
+                    }
+                )
+            yield _sse_event({"event": "done", "sources": [], "confidence": confidence})
             total_elapsed_ms = int((time.perf_counter() - request_start) * 1000)
             _chat_log(
                 f"done tier=recommendation confidence={confidence:.6f} sources=[] elapsed_ms={total_elapsed_ms}",
@@ -612,13 +672,13 @@ async def stream_chat(request: Request, body: ChatStreamRequest):
                 current_intent_id=intent_id_from_client,
                 query_embedding=result.get("query_embedding"),
             ):
-                yield _sse_event({
-                    "event": "chunk",
-                    "content": getattr(chunk, "content", str(chunk)),
-                })
-            yield _sse_event(
-                {"event": "done", "sources": [], "confidence": confidence}
-            )
+                yield _sse_event(
+                    {
+                        "event": "chunk",
+                        "content": getattr(chunk, "content", str(chunk)),
+                    }
+                )
+            yield _sse_event({"event": "done", "sources": [], "confidence": confidence})
             total_elapsed_ms = int((time.perf_counter() - request_start) * 1000)
             _chat_log(
                 f"done tier=nope confidence={confidence:.6f} "

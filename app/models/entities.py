@@ -1,6 +1,14 @@
 import datetime
 from sqlalchemy import (
-    Column, Integer, String, Boolean, Date, DateTime, Float, ForeignKey, Text
+    Column,
+    Integer,
+    String,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 from datetime import datetime
@@ -64,6 +72,11 @@ class Users(Base):
         foreign_keys="[KnowledgeBaseDocument.reviewed_by]",
         back_populates="reviewer",
     )
+    deleted_knowledge_documents = relationship(
+        "KnowledgeBaseDocument",
+        foreign_keys="KnowledgeBaseDocument.deleted_by",
+        back_populates="deleter",
+    )
     document_chunks = relationship(
         "DocumentChunk", back_populates="created_by_user", cascade="all, delete-orphan"
     )
@@ -99,6 +112,11 @@ class Users(Base):
         foreign_keys="[TrainingQuestionAnswer.approved_by]",
         back_populates="approved_by_user",
         cascade="all, delete-orphan",
+    )
+    training_question_answers_deleted = relationship(
+        "TrainingQuestionAnswer",
+        foreign_keys="TrainingQuestionAnswer.deleted_by",
+        back_populates="deleted_by_user",
     )
     # Note: rejected_by link removed; rejection is stored as text in TrainingQuestionAnswer.reject_reason
 
@@ -444,9 +462,10 @@ class TrainingQuestionAnswer(Base):
     approved_by = Column(Integer, ForeignKey("Users.user_id"), nullable=True)
     approved_at = Column(DateTime, nullable=True)
     reject_reason = Column(String, nullable=True)
+    is_private = Column(Boolean, default=False, nullable=True)
     target_audiences = Column(ARRAY(String), default=[])
     # removed rejected_by/rejected_at: rejection author/date are not stored as separate columns
-
+    deleted_by = Column(Integer, ForeignKey("Users.user_id"), nullable=True)
     # Relationships
     intent = relationship("Intent", back_populates="training_questions")
 
@@ -459,6 +478,11 @@ class TrainingQuestionAnswer(Base):
         "Users",
         foreign_keys=[approved_by],
         back_populates="training_question_answers_approved",
+    )
+    deleted_by_user = relationship(
+        "Users",
+        foreign_keys=[deleted_by],
+        back_populates="training_question_answers_deleted",
     )
     # rejection author relationship removed
 
@@ -491,20 +515,24 @@ class KnowledgeBaseDocument(Base):
     title = Column(String)
     file_path = Column(String)
     category = Column(String)
-    intend_id = Column(Integer, ForeignKey('Intent.intent_id'))
-    status = Column(String, default="draft")  # Values: draft, approved, rejected, deleted
+    intend_id = Column(Integer, ForeignKey("Intent.intent_id"))
+    status = Column(
+        String, default="draft"
+    )  # Values: draft, approved, rejected, deleted
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, onupdate=datetime.now)
-    created_by = Column(Integer, ForeignKey('Users.user_id'))
-    reviewed_by = Column(Integer, ForeignKey('Users.user_id'), nullable=True)
+    created_by = Column(Integer, ForeignKey("Users.user_id"))
+    reviewed_by = Column(Integer, ForeignKey("Users.user_id"), nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
+    deleted_by = Column(Integer, ForeignKey("Users.user_id"), nullable=True)
     reject_reason = Column(String, nullable=True)
+    is_private = Column(Boolean, default=False, nullable=True)
     target_audiences = Column(ARRAY(String), default=[])
     content = Column(Text, nullable=True)
     is_ocr = Column(Boolean, default=False)
     path_txt = Column(String, nullable=True)
 
-    intent = relationship('Intent', back_populates='document')
+    intent = relationship("Intent", back_populates="document")
     # Relationships
     chunks = relationship(
         "DocumentChunk", back_populates="document", cascade="all, delete-orphan"
@@ -517,14 +545,23 @@ class KnowledgeBaseDocument(Base):
         foreign_keys=[reviewed_by],
         back_populates="reviewed_knowledge_documents",
     )
-    tasks = relationship("DocumentTask", back_populates="document", cascade="all, delete-orphan")
+    deleter = relationship(
+        "Users",
+        foreign_keys=[deleted_by],
+        back_populates="deleted_knowledge_documents",
+    )
+    tasks = relationship(
+        "DocumentTask", back_populates="document", cascade="all, delete-orphan"
+    )
 
 
 class DocumentTask(Base):
     __tablename__ = "DocumentTask"
 
     task_id = Column(Integer, primary_key=True, autoincrement=True)
-    document_id = Column(Integer, ForeignKey("KnowledgeBaseDocument.document_id"), nullable=False)
+    document_id = Column(
+        Integer, ForeignKey("KnowledgeBaseDocument.document_id"), nullable=False
+    )
     task_type = Column(String, nullable=False)
     status = Column(String, default="pending")
     progress = Column(Integer, default=0)
@@ -538,7 +575,7 @@ class DocumentTask(Base):
 
 
 class DocumentChunk(Base):
-    __tablename__ = 'DocumentChunk'
+    __tablename__ = "DocumentChunk"
 
     chunk_id = Column(Integer, primary_key=True, autoincrement=True)
     chunk_text = Column(Text)

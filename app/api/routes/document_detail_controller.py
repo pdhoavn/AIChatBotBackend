@@ -99,6 +99,8 @@ def get_document_detail(
         "updated_at": doc.updated_at,
         "created_by": doc.created_by,
         "reviewed_by": doc.reviewed_by,
+        "created_by_name": doc.author.full_name if doc.author else None,          
+        "reviewed_by_name": doc.reviewer.full_name if doc.reviewer else None,
         "reviewed_at": doc.reviewed_at,
         "target_audiences": getattr(doc, "target_audiences", []),
         "intent_id": doc.intent.intent_id if doc.intent else None,
