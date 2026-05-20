@@ -1996,7 +1996,7 @@ class TrainingService:
             for document_id in document_ids
         ]
 
-    def has_private_content(chunks: list) -> bool:
+    def has_private_content(self, chunks: list) -> bool:
         return any(
             chunk.payload.get("is_private", False)
             for chunk in chunks
