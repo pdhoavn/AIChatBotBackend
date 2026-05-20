@@ -717,8 +717,7 @@ class OcrFolderResponse(OcrFolderBase):
     created_at: Optional[datetime] = None
     children: List["OcrFolderResponse"] = []
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 
 class OcrDocumentBase(BaseModel):
@@ -737,8 +736,7 @@ class OcrDocumentResponse(OcrDocumentBase):
     updated_at: Optional[datetime] = None
     error_message: Optional[str] = None
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 
 class OcrDocumentListResponse(BaseModel):
@@ -753,5 +751,4 @@ class OcrDocumentListResponse(BaseModel):
     folder_id: Optional[int] = None
     error_message: Optional[str] = None
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

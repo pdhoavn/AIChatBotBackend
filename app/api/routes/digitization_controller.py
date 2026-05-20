@@ -85,7 +85,7 @@ def get_folder_tree(
         ).all()
         result = []
         for f in folders:
-            node = OcrFolderResponse.from_orm(f)
+            node = OcrFolderResponse.model_validate(f)
             node.children = build_tree(f.folder_id)
             result.append(node)
         return result
