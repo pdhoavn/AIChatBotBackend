@@ -31,6 +31,7 @@ from app.api.routes import (
     analytics_controller,
     question_log_controller,
     messenger_controller,
+    digitization_controller,
 )
 
 logger = logging.getLogger(__name__)
@@ -178,6 +179,9 @@ app.include_router(
 )
 app.include_router(
     messenger_controller.router, prefix="/webhook", tags=["Messenger"]
+)
+app.include_router(
+    digitization_controller.router, prefix="/consultant/digitization", tags=["Document Digitization"]
 )
 
 
