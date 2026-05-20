@@ -1356,6 +1356,7 @@ class TrainingService:
                             "intent_name": intent.intent_name if intent else None,
                             "metadata": metadata or {},
                             "type": "document",
+                            "is_private": doc.is_private or False,
                         },
                     )
                 ],

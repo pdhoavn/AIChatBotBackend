@@ -261,6 +261,9 @@ async def upload_document(
         )
         current_user_id = current_user.user_id
         print(f"User id submid: {current_user_id}")
+        # Convert is_private string to boolean
+        is_private_bool = is_private.lower() in ("true", "1") if is_private else False
+
         doc = service.create_document(
             db=db,
             title=doc_title,
@@ -268,7 +271,7 @@ async def upload_document(
             intend_id=intend_id,
             target_audiences=target_audiences,
             created_by=current_user_id,
-            is_private=is_private,
+            is_private=is_private_bool,
             content=extracted_text,
         )
 
@@ -325,6 +328,9 @@ async def upload_document_ocr(
     )
     current_user_id = current_user.user_id
     print(f"User_id: {current_user_id}")
+    # Convert is_private string to boolean
+    is_private_bool = is_private.lower() in ("true", "1") if is_private else False
+
     # Save doc as draft
     service = TrainingService()
     doc = service.create_document(
@@ -334,7 +340,7 @@ async def upload_document_ocr(
         intend_id=intend_id,
         target_audiences=target_audiences,
         created_by=current_user_id,
-        is_private=is_private,
+        is_private=is_private_bool,
         content=None,
         is_ocr=True,
     )
@@ -946,6 +952,7 @@ def api_approve_document(
                                 "intent_id": bdoc.intend_id,
                                 "intent_name": intent.intent_name if intent else None,
                                 "type": "document",
+                                "is_private": bdoc.is_private or False,
                             },
                         )
                     ],
