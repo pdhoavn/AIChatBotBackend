@@ -176,6 +176,10 @@ async def upload_ocr_document(
         "message": "Document uploaded successfully",
         "document_id": doc.document_id,
         "status": doc.status,
+        "created_by": current_user.user_id,
+        "creator_name": current_user.full_name,
+        "file_name": doc.file_name,
+        "file_type": doc.file_type,
     }
 
 
@@ -227,6 +231,8 @@ def start_ocr(
                 src_pdf = fitz.open(file_abs)
                 total = src_pdf.page_count
                 bdoc.status = "processing"
+                bdoc.total_pages = total
+                bdoc.completed_pages = 0
                 bdb.commit()
 
                 for idx in range(total):
@@ -244,8 +250,15 @@ def start_ocr(
                     output_pdf.insert_pdf(tmp_pdf)
                     tmp_pdf.close()
 
+                    bdoc.completed_pages = idx + 1
+                    bdb.commit()
+
                 src_pdf.close()
             else:
+                bdoc.total_pages = 1
+                bdoc.completed_pages = 0
+                bdb.commit()
+
                 img = Image.open(file_abs)
                 try:
                     pdf_bytes = pytesseract.image_to_pdf_or_hocr(img, extension='pdf', lang="vie")
@@ -255,6 +268,9 @@ def start_ocr(
                 tmp_pdf = fitz.open("pdf", pdf_bytes)
                 output_pdf.insert_pdf(tmp_pdf)
                 tmp_pdf.close()
+
+                bdoc.completed_pages = 1
+                bdb.commit()
 
             output_pdf.save(str(output_path))
             output_pdf.close()
@@ -312,6 +328,7 @@ def list_documents(
     result = []
     for doc in documents:
         created_time = doc.created_at.strftime("%H:%M:%S") if doc.created_at else None
+        creator_name = doc.creator.full_name if doc.creator else None
         result.append({
             "document_id": doc.document_id,
             "file_name": doc.file_name,
@@ -319,9 +336,12 @@ def list_documents(
             "full_name": doc.full_name,
             "status": doc.status,
             "created_by": doc.created_by,
+            "creator_name": creator_name,
             "created_at": doc.created_at,
             "created_time": created_time,
             "folder_id": doc.folder_id,
+            "total_pages": doc.total_pages or 0,
+            "completed_pages": doc.completed_pages or 0,
             "error_message": doc.error_message,
         })
 
@@ -346,7 +366,49 @@ def get_document(
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    return doc
+
+    return {
+        "document_id": doc.document_id,
+        "file_name": doc.file_name,
+        "file_path": doc.file_path,
+        "file_type": doc.file_type,
+        "full_name": doc.full_name,
+        "status": doc.status,
+        "created_by": doc.created_by,
+        "creator_name": doc.creator.full_name if doc.creator else None,
+        "created_at": doc.created_at,
+        "updated_at": doc.updated_at,
+        "total_pages": doc.total_pages or 0,
+        "completed_pages": doc.completed_pages or 0,
+        "error_message": doc.error_message,
+    }
+
+
+@router.get("/documents/{document_id}/progress")
+def get_progress(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: entities.Users = Depends(check_digitization_permission),
+):
+    """Poll OCR progress"""
+    doc = db.query(entities.OcrDocument).filter(
+        entities.OcrDocument.document_id == document_id
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    total = doc.total_pages or 0
+    completed = doc.completed_pages or 0
+    progress_percent = round(completed / total * 100) if total > 0 else 0
+
+    return {
+        "document_id": doc.document_id,
+        "status": doc.status,
+        "total_pages": total,
+        "completed_pages": completed,
+        "progress_percent": progress_percent,
+        "error_message": doc.error_message,
+    }
 
 
 @router.get("/documents/{document_id}/download")

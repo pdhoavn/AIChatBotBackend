@@ -699,6 +699,8 @@ class OcrDocument(Base):
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     output_pdf_path = Column(String, nullable=True)  # Path to searchable PDF output
+    total_pages = Column(Integer, default=0)  # Total pages to OCR
+    completed_pages = Column(Integer, default=0)  # Pages processed so far
     error_message = Column(Text, nullable=True)
 
     # Relationships

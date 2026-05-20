@@ -732,8 +732,11 @@ class OcrDocumentResponse(OcrDocumentBase):
     file_path: str
     status: str
     created_by: Optional[int] = None
+    creator_name: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    total_pages: int = 0
+    completed_pages: int = 0
     error_message: Optional[str] = None
 
     model_config = {"from_attributes": True}
@@ -746,9 +749,12 @@ class OcrDocumentListResponse(BaseModel):
     full_name: Optional[str] = None
     status: str
     created_by: Optional[int] = None
+    creator_name: Optional[str] = None
     created_at: Optional[datetime] = None
     created_time: Optional[str] = None
     folder_id: Optional[int] = None
+    total_pages: int = 0
+    completed_pages: int = 0
     error_message: Optional[str] = None
 
     model_config = {"from_attributes": True}
