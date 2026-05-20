@@ -150,10 +150,10 @@ def check_file_exists_public(file_path: str) -> Path:
 def api_create_training_qa(
     payload: TrainingQuestionRequest,
     db: Session = Depends(get_db),
-    current_user_id: int = 1,
+    current_user: entities.Users = Depends(check_leader_permission),
 ):
     service = TrainingService()
-
+    current_user_id = current_user.user_id
     qa = service.create_training_qa(
         db=db,
         intent_id=payload.intent_id,
@@ -161,6 +161,7 @@ def api_create_training_qa(
         answer=payload.answer,
         target_audiences=payload.target_audiences or [],
         created_by=current_user_id,
+        is_private=payload.is_private,
     )
 
     return {
@@ -175,6 +176,7 @@ async def upload_document(
     intend_id: int = Query(...),
     file: UploadFile = File(...),
     title: str = Form(None),
+    is_private: str = Form(None),
     category: str = Form(None),
     target_audiences: List[str] = Form([]),
     current_user: entities.Users = Depends(check_leader_permission),
@@ -266,6 +268,7 @@ async def upload_document(
             intend_id=intend_id,
             target_audiences=target_audiences,
             created_by=current_user_id,
+            is_private=is_private,
             content=extracted_text,
         )
 
@@ -292,6 +295,7 @@ async def upload_document_ocr(
     intend_id: int = Query(...),
     file: UploadFile = File(...),
     title: str = Form(None),
+    is_private: str = Form(None),
     target_audiences: List[str] = Form([]),
     current_user: entities.Users = Depends(check_leader_permission),
     db: Session = Depends(get_db),
@@ -330,6 +334,7 @@ async def upload_document_ocr(
         intend_id=intend_id,
         target_audiences=target_audiences,
         created_by=current_user_id,
+        is_private=is_private,
         content=None,
         is_ocr=True,
     )
@@ -477,7 +482,7 @@ def get_all_training_questions(
     query = db.query(entities.TrainingQuestionAnswer).options(
         joinedload(entities.TrainingQuestionAnswer.intent)
     )
-
+    query = query.filter(entities.TrainingQuestionAnswer.status != "deleted")
     # Apply status filter if provided
     if status:
         query = query.filter(entities.TrainingQuestionAnswer.status == status)

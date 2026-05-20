@@ -1,3 +1,4 @@
+from app.core.security import get_current_user
 from fastapi import (
     APIRouter,
     HTTPException,
@@ -372,7 +373,11 @@ def _sse_event(data: dict) -> str:
 
 
 @router.post("/stream")
-async def stream_chat(request: Request, body: ChatStreamRequest):
+async def stream_chat(
+    request: Request,
+    body: ChatStreamRequest,
+    current_user: dict = Depends(get_current_user),
+):
     """
     SSE endpoint thay thế cho WebSocket /ws/chat.
     Client gửi POST với message, nhận về stream SSE gồm các event:
@@ -494,6 +499,21 @@ async def stream_chat(request: Request, body: ChatStreamRequest):
             _chat_log(f"training_qa_relevance={relevance_ok}", trace_id)
 
             if relevance_ok:
+                # Check is_private cho training QA
+                is_private = top.payload.get("is_private", False)
+                if is_private and not current_user:
+                    _chat_log("private_qa_blocked: user not logged in", trace_id)
+                    yield _sse_event(
+                        {
+                            "event": "login_required",
+                            "message": "Nội dung này yêu cầu đăng nhập để xem.",
+                        }
+                    )
+                    yield _sse_event(
+                        {"event": "done", "sources": [], "confidence": 0.0}
+                    )
+                    return
+
                 async for chunk in sse_service.stream_response_from_qa(
                     enriched_query,
                     a_text,
@@ -538,6 +558,16 @@ async def stream_chat(request: Request, body: ChatStreamRequest):
 
         context_chunks = result["response"]
         intent_id = result["intent_id"]
+        if sse_service.has_private_content(context_chunks) and not current_user:
+            _chat_log("private_document_blocked: user not logged in", trace_id)
+            yield _sse_event(
+                {
+                    "event": "login_required",
+                    "message": "Nội dung này yêu cầu đăng nhập để xem.",
+                }
+            )
+            yield _sse_event({"event": "done", "sources": [], "confidence": 0.0})
+            return
         context = "\n\n".join([r.payload.get("chunk_text", "") for r in context_chunks])
         _chat_log(
             f"context_precheck chunks={len(context_chunks)} chars={len(context)} intent_id={intent_id}",

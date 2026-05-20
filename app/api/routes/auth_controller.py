@@ -2,7 +2,7 @@ from datetime import timedelta
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-
+import httpx
 from app.core.security import (
     create_access_token,
     get_password_hash,
@@ -13,6 +13,7 @@ from app.core.security import (
 )
 from app.models.database import get_db
 from app.models.schemas import (
+    LoginChatRequest,
     Token,
     UserCreate,
     UserResponse,
@@ -34,7 +35,7 @@ def register(*, db: Session = Depends(get_db), user_in: UserCreate) -> Any:
             status_code=400,
             detail="The user with this email already exists in the system.",
         )
-    
+
     # Create user with basic information; role_id is deferred
     user = Users(
         email=user_in.email,
@@ -50,30 +51,47 @@ def register(*, db: Session = Depends(get_db), user_in: UserCreate) -> Any:
 
     # Import models that we'll need in both branches
     from app.models.entities import Role as RoleModel
-    
+
     # Add permissions if provided (validate permission ids first)
     if user_in.permissions:
         # Import models here to avoid circular import at module load
         from app.models.entities import Permission as PermissionModel
         from app.models.entities import ConsultantProfile as ConsultantProfileModel
-        from app.models.entities import ContentManagerProfile as ContentManagerProfileModel
-        from app.models.entities import AdmissionOfficialProfile as AdmissionOfficialProfileModel
+        from app.models.entities import (
+            ContentManagerProfile as ContentManagerProfileModel,
+        )
+        from app.models.entities import (
+            AdmissionOfficialProfile as AdmissionOfficialProfileModel,
+        )
 
         # Validate permissions and get their names
-        perms = db.query(PermissionModel).filter(PermissionModel.permission_id.in_(user_in.permissions)).all()
+        perms = (
+            db.query(PermissionModel)
+            .filter(PermissionModel.permission_id.in_(user_in.permissions))
+            .all()
+        )
         if len(perms) != len(set(user_in.permissions)):
             db.rollback()
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="One or more permission IDs are invalid.")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="One or more permission IDs are invalid.",
+            )
 
-        permission_names = { (p.permission_name or "").lower() for p in perms }
+        permission_names = {(p.permission_name or "").lower() for p in perms}
 
         # Assign permissions to user
         for perm in perms:
-            db.add(UserPermission(user_id=user.user_id, permission_id=perm.permission_id))
+            db.add(
+                UserPermission(user_id=user.user_id, permission_id=perm.permission_id)
+            )
 
         # Determine and set the user's role based on permissions
         if any("admission" in name for name in permission_names):
-            admission_role = db.query(RoleModel).filter(RoleModel.role_name.ilike("%admission%")).first()
+            admission_role = (
+                db.query(RoleModel)
+                .filter(RoleModel.role_name.ilike("%admission%"))
+                .first()
+            )
             if admission_role:
                 user.role_id = admission_role.role_id
             else:
@@ -81,7 +99,7 @@ def register(*, db: Session = Depends(get_db), user_in: UserCreate) -> Any:
         else:
             # If permissions are given but none are admission, role is explicitly null
             user.role_id = None
-        
+
         # Create related profiles based on granted permissions
         # Consultant profile
         if any(name for name in permission_names if "consultant" in name):
@@ -89,47 +107,61 @@ def register(*, db: Session = Depends(get_db), user_in: UserCreate) -> Any:
                 consultant_id=user.user_id,
                 # ConsultantProfile.status already defaults to True in the model, but set explicitly
                 status=True,
-                is_leader=bool(getattr(user_in, "consultant_is_leader", False))
+                is_leader=bool(getattr(user_in, "consultant_is_leader", False)),
             )
             db.add(consultant_profile)
 
         # Content manager profile
-        if any(name for name in permission_names if "content" in name or "content_manager" in name or "content manager" in name):
+        if any(
+            name
+            for name in permission_names
+            if "content" in name
+            or "content_manager" in name
+            or "content manager" in name
+        ):
             content_manager_profile = ContentManagerProfileModel(
                 content_manager_id=user.user_id,
-                is_leader=bool(getattr(user_in, "content_manager_is_leader", False))
+                is_leader=bool(getattr(user_in, "content_manager_is_leader", False)),
             )
             db.add(content_manager_profile)
 
         # Admission official profile
-        if any(name for name in permission_names if "admission" in name or "official" in name or "admission_official" in name):
+        if any(
+            name
+            for name in permission_names
+            if "admission" in name or "official" in name or "admission_official" in name
+        ):
             admission_profile = AdmissionOfficialProfileModel(
                 admission_official_id=user.user_id,
                 rating=0,
                 current_sessions=0,
                 max_sessions=10,
-                status="available"
+                status="available",
             )
             db.add(admission_profile)
     else:
         # No permissions provided => regular customer user
         # Find or create a "Customer" role
-        customer_role = db.query(RoleModel).filter(RoleModel.role_name.ilike("customer")).first()
+        customer_role = (
+            db.query(RoleModel).filter(RoleModel.role_name.ilike("customer")).first()
+        )
         if not customer_role:
             # Create Customer role if it doesn't exist
             customer_role = RoleModel(role_name="Customer")
             db.add(customer_role)
             db.flush()  # Get the role_id
-        
+
         user.role_id = customer_role.role_id
-        
+
         # Create CustomerProfile for this user
         # Optionally create an Interest record if interest data was provided during registration
         from app.models.entities import CustomerProfile as CustomerProfileModel
         from app.models.entities import Interest as InterestModel
 
         interest_obj = None
-        if getattr(user_in, "interest_desired_major", None) or getattr(user_in, "interest_region", None):
+        if getattr(user_in, "interest_desired_major", None) or getattr(
+            user_in, "interest_region", None
+        ):
             interest_obj = InterestModel(
                 desired_major=getattr(user_in, "interest_desired_major", None),
                 region=getattr(user_in, "interest_region", None),
@@ -140,13 +172,13 @@ def register(*, db: Session = Depends(get_db), user_in: UserCreate) -> Any:
 
         customer_profile = CustomerProfileModel(
             customer_id=user.user_id,
-            interest_id=interest_obj.interest_id if interest_obj else None
+            interest_id=interest_obj.interest_id if interest_obj else None,
         )
         db.add(customer_profile)
 
     db.commit()
     db.refresh(user)
-    
+
     # Prepare response with permissions
     response = {
         "user_id": user.user_id,
@@ -155,16 +187,15 @@ def register(*, db: Session = Depends(get_db), user_in: UserCreate) -> Any:
         "phone_number": user.phone_number,
         "status": user.status,
         "role_id": user.role_id,
-        "permissions": [p.permission_id for p in user.permissions] if user.permissions else []
+        "permissions": (
+            [p.permission_id for p in user.permissions] if user.permissions else []
+        ),
     }
     return response
 
 
 @router.post("/login", response_model=Token)
-def login(
-    db: Session = Depends(get_db),
-    form_data: LoginRequest = None
-) -> Any:
+def login(db: Session = Depends(get_db), form_data: LoginRequest = None) -> Any:
     """
     Login to get an access token for future requests.
     """
@@ -173,7 +204,7 @@ def login(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Login credentials required",
         )
-    
+
     email = form_data.email
     password = form_data.password
 
@@ -185,14 +216,55 @@ def login(
         )
     if not user.status:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
-            detail="Your account has been deactivated. Please contact the administrator."
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account has been deactivated. Please contact the administrator.",
         )
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     return {
         "access_token": create_access_token(
-            {"sub": user.email, "user_id": user.user_id}
+            {"sub": user.email, "user_id": user.user_id, "role": "admin"}
         ),
-            "token_type": "bearer",
-        }
+        "token_type": "bearer",
+    }
+
+
+@router.post("/login/chat", response_model=Token)
+async def login_chat(form_data: LoginChatRequest = None):
+    if not form_data:
+        raise HTTPException(status_code=400, detail="Cần có thông tin đăng nhập")
+
+    user_name = form_data.user_name
+    password = form_data.password
+    external_api_url = "https://vsmartoffice.vn/api/API_ChucVu/API_Login"
+    remember_me = False
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                external_api_url,
+                params={
+                    "UserName": user_name,
+                    "Password": password,
+                    "RememberMe": remember_me,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            # Giả sử API ngoài trả về isOk: 1
+            if data.get("isOk") != 1:
+                raise HTTPException(
+                    status_code=401, detail="Sai tài khoản hoặc mật khẩu"
+                )
+
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=401, detail="Xác thực thất bại từ vsmartoffice")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Lỗi kết nối đến server xác thực")
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user_name, "role": "chat_user"}, expires_delta=access_token_expires
+    )
+
+    return {"access_token": access_token, "token_type": "bearer"}

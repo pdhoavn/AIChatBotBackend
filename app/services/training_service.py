@@ -1113,6 +1113,7 @@ class TrainingService:
         answer: str,
         target_audiences: List[str],
         created_by: int,
+        is_private: Optional[bool] = False,
     ):
         qa = TrainingQuestionAnswer(
             question=question,
@@ -1120,6 +1121,7 @@ class TrainingService:
             intent_id=intent_id,
             target_audiences=target_audiences,
             created_by=created_by,
+            is_private=is_private,
             status="draft",
         )
         db.add(qa)
@@ -1170,6 +1172,7 @@ class TrainingService:
                         "question_text": qa.question,
                         "answer_text": qa.answer,
                         "type": "training_qa",
+                        "is_private": qa.is_private or False,
                     },
                 )
             ],
@@ -1216,6 +1219,7 @@ class TrainingService:
         intend_id: int,
         target_audiences: List[str],
         created_by: int,
+        is_private: Optional[bool] = False,
         content: Optional[str] = None,
         is_ocr: bool = False,
         path_txt: Optional[str] = None,
@@ -1226,6 +1230,7 @@ class TrainingService:
             intend_id=intend_id,
             target_audiences=target_audiences,
             status="draft",
+            is_private=is_private,
             created_by=created_by,
             content=content,
             is_ocr=is_ocr,
@@ -1490,6 +1495,7 @@ class TrainingService:
                                 "intent_id": doc.intend_id,
                                 "intent_name": intent.intent_name if intent else None,
                                 "type": "document",
+                                "is_private": doc.is_private or False,
                             },
                         )
                     ],
@@ -1988,6 +1994,13 @@ class TrainingService:
             }
             for document_id in document_ids
         ]
+
+    def has_private_content(chunks: list) -> bool:
+        return any(
+            chunk.payload.get("is_private", False)
+            for chunk in chunks
+            if hasattr(chunk, "payload")
+        )
 
     def build_document_search_result(self, doc_results: List[Any]) -> Dict[str, Any]:
         """
