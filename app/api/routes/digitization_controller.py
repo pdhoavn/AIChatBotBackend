@@ -7,7 +7,7 @@ from fastapi import (
     Form,
     Query,
 )
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from pathlib import Path
@@ -434,10 +434,23 @@ def download_output_pdf(
     if not os.path.exists(resolved_path):
         raise HTTPException(status_code=404, detail="Output PDF file not found on disk")
 
-    return FileResponse(
-        path=resolved_path,
-        filename=f"{doc.file_name}_searchable.pdf",
+    # Dùng filename ASCII để tránh lỗi encoding header với ký tự tiếng Việt
+    safe_filename = f"searchable_{doc.document_id}.pdf"
+
+    def iter_file(path: str, chunk_size: int = 1024 * 1024):
+        with open(path, "rb") as f:
+            while True:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+
+    return StreamingResponse(
+        iter_file(resolved_path),
         media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_filename}"',
+        },
     )
 
 
