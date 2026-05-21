@@ -2,6 +2,7 @@ from datetime import timedelta
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+import os
 import httpx
 from app.core.security import (
     create_access_token,
@@ -11,6 +12,7 @@ from app.core.security import (
     get_current_user,
     verify_user_access,
 )
+from dotenv import load_dotenv
 from app.models.database import get_db
 from app.models.schemas import (
     LoginChatRequest,
@@ -22,6 +24,8 @@ from app.models.schemas import (
 from app.models.entities import Users, UserPermission
 
 router = APIRouter()
+
+load_dotenv()
 
 
 @router.post("/register", response_model=UserResponse)
@@ -236,7 +240,9 @@ async def login_chat(form_data: LoginChatRequest = None):
 
     user_name = form_data.user_name
     password = form_data.password
-    external_api_url = "https://vsmartoffice.vn/api/API_ChucVu/API_Login"
+    external_api_url = os.getenv(
+        "API_VSMARTOFFICE", "https://vsmartoffice.vn/api/API_ChucVu/API_Login"
+    )
     remember_me = False
     try:
         async with httpx.AsyncClient() as client:
