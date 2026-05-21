@@ -16,11 +16,14 @@ import os
 import json
 import uuid
 from datetime import datetime
+from qdrant_client import models
 
 from app.models.database import init_db, get_db
 from app.models.schemas import (
     KnowledgeBaseDocumentDeletedResponse,
+    KnowledgeBaseDocumentMetadataUpdate,
     TrainingQuestionDeletedResponse,
+    TrainingQuestionMetadataUpdate,
     TrainingQuestionRequest,
     TrainingQuestionResponse,
     KnowledgeBaseDocumentResponse,
@@ -144,6 +147,64 @@ def check_file_exists_public(file_path: str) -> Path:
     if not resolved_path.exists():
         raise HTTPException(status_code=404, detail="Document file not found")
     return resolved_path
+
+
+def _resolve_metadata_audiences(db: Session, target_audiences: List[str]):
+    names = target_audiences or []
+    if not names:
+        return [], [], []
+
+    audiences = (
+        db.query(entities.TargetAudience)
+        .filter(entities.TargetAudience.name.in_(names))
+        .all()
+    )
+    found_names = {audience.name for audience in audiences}
+    missing = [name for name in names if name not in found_names]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid target audiences: {', '.join(missing)}",
+        )
+
+    return (
+        [audience.id for audience in audiences],
+        [audience.name for audience in audiences],
+        [audience.present_name for audience in audiences],
+    )
+
+
+def _resolve_metadata_intent(db: Session, intent_id: Optional[int]):
+    if intent_id is None or intent_id == 0:
+        return None
+
+    intent = db.query(entities.Intent).filter_by(intent_id=intent_id).first()
+    if not intent:
+        raise HTTPException(status_code=400, detail="Invalid intent_id")
+    return intent
+
+
+def _set_qdrant_payload_by_filter(
+    collection_name: str, field_key: str, field_value: int, payload: dict
+):
+    if not payload:
+        return
+
+    service = TrainingService()
+    service.qdrant_client.set_payload(
+        collection_name=collection_name,
+        payload=payload,
+        points=models.FilterSelector(
+            filter=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key=field_key,
+                        match=models.MatchValue(value=field_value),
+                    )
+                ]
+            )
+        ),
+    )
 
 
 @router.post("/upload/training_question")
@@ -516,6 +577,7 @@ def get_all_training_questions(
                 ),
                 "reject_reason": getattr(tqa, "reject_reason", None),
                 "target_audiences": getattr(tqa, "target_audiences", []),
+                "is_private": getattr(tqa, "is_private", False),
             }
         )
 
@@ -714,6 +776,98 @@ def get_document_by_id(
         "reviewed_at": document.reviewed_at.date() if document.reviewed_at else None,
         "reject_reason": getattr(document, "reject_reason", None),
         "target_audiences": getattr(document, "target_audiences", []),
+        "is_private": getattr(document, "is_private", False),
+        "intent_id": document.intent.intent_id if document.intent else None,
+        "intent_name": document.intent.intent_name if document.intent else None,
+    }
+
+
+@router.patch("/documents/{document_id}/metadata", response_model=KnowledgeBaseDocumentResponse)
+def update_document_metadata(
+    document_id: int,
+    payload: KnowledgeBaseDocumentMetadataUpdate,
+    db: Session = Depends(get_db),
+    current_user: entities.Users = Depends(check_leader_permission),
+):
+    """
+    Update document metadata only. This endpoint never changes extracted content,
+    chunks, or embeddings. For approved documents, it updates Qdrant payload
+    fields used by RAG filters without re-embedding the document content.
+    """
+    document = get_document_or_404(document_id, db)
+    update_data = payload.dict(exclude_unset=True)
+
+    if "title" in update_data:
+        title = (payload.title or "").strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="Title cannot be empty")
+        document.title = title
+
+    if "category" in update_data:
+        document.category = payload.category
+
+    intent = None
+    if "intent_id" in update_data:
+        intent = _resolve_metadata_intent(db, payload.intent_id)
+        document.intend_id = intent.intent_id if intent else None
+    else:
+        intent = document.intent
+
+    qdrant_payload = {}
+    if "intent_id" in update_data:
+        qdrant_payload["intent_id"] = intent.intent_id if intent else 0
+        qdrant_payload["intent_name"] = intent.intent_name if intent else None
+
+    if "is_private" in update_data:
+        document.is_private = bool(payload.is_private)
+        qdrant_payload["is_private"] = bool(payload.is_private)
+
+    if "target_audiences" in update_data:
+        audience_ids, _, audience_present_names = _resolve_metadata_audiences(
+            db, payload.target_audiences or []
+        )
+        document.target_audiences = payload.target_audiences or []
+        qdrant_payload["audience_ids"] = audience_ids
+        qdrant_payload["audience_names"] = audience_present_names
+
+    document.updated_at = datetime.now()
+
+    try:
+        if document.status == "approved" and qdrant_payload:
+            _set_qdrant_payload_by_filter(
+                "knowledge_base_documents",
+                "document_id",
+                document_id,
+                qdrant_payload,
+            )
+        db.commit()
+        db.refresh(document)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not update document metadata: {exc}",
+        ) from exc
+
+    return {
+        "document_id": document.document_id,
+        "title": document.title,
+        "file_path": document.file_path,
+        "category": document.category,
+        "created_at": document.created_at,
+        "updated_at": document.updated_at,
+        "created_by": document.created_by,
+        "created_by_name": document.author.full_name if document.author else None,
+        "status": document.status,
+        "reviewed_by": document.reviewed_by,
+        "reviewed_at": document.reviewed_at,
+        "reviewed_by_name": document.reviewer.full_name if document.reviewer else None,
+        "reject_reason": getattr(document, "reject_reason", None),
+        "target_audiences": getattr(document, "target_audiences", []),
+        "is_private": getattr(document, "is_private", False),
+        "is_ocr": getattr(document, "is_ocr", False),
+        "intent_id": document.intent.intent_id if document.intent else None,
+        "intent_name": document.intent.intent_name if document.intent else None,
     }
 
 
@@ -788,6 +942,7 @@ def get_pending_documents(
             "reviewed_by_name": doc.reviewer.full_name if doc.reviewer else None,
             "reject_reason": getattr(doc, "reject_reason", None),
             "target_audiences": getattr(doc, "target_audiences", []),
+            "is_private": getattr(doc, "is_private", False),
             "intent_id": doc.intent.intent_id if doc.intent else None,
             "intent_name": doc.intent.intent_name if doc.intent else None,
         }
@@ -1097,6 +1252,7 @@ def get_pending_training_questions(
             ),
             "reject_reason": getattr(q, "reject_reason", None),
             "target_audiences": getattr(q, "target_audiences", []),
+            "is_private": getattr(q, "is_private", False),
         }
         for q in questions
     ]
@@ -1126,6 +1282,84 @@ def submit_training_qa_for_review(
     return {
         "message": "Training Q&A submitted for review successfully",
         "question_id": question_id,
+    }
+
+
+@router.patch(
+    "/training_questions/{question_id}/metadata",
+    response_model=TrainingQuestionResponse,
+)
+def update_training_question_metadata(
+    question_id: int,
+    payload: TrainingQuestionMetadataUpdate,
+    db: Session = Depends(get_db),
+    current_user: entities.Users = Depends(check_leader_permission),
+):
+    """
+    Update training Q&A metadata only. This endpoint never changes question or
+    answer text, so existing embeddings remain valid. For approved questions,
+    it updates Qdrant payload fields used by RAG filters without re-embedding.
+    """
+    qa = get_training_qa_or_404(question_id, db)
+    update_data = payload.dict(exclude_unset=True)
+
+    intent = None
+    if "intent_id" in update_data:
+        intent = _resolve_metadata_intent(db, payload.intent_id)
+        qa.intent_id = intent.intent_id if intent else None
+    else:
+        intent = qa.intent
+
+    qdrant_payload = {}
+    if "intent_id" in update_data:
+        qdrant_payload["intent_id"] = intent.intent_id if intent else 0
+        qdrant_payload["intent_name"] = intent.intent_name if intent else None
+
+    if "is_private" in update_data:
+        qa.is_private = bool(payload.is_private)
+        qdrant_payload["is_private"] = bool(payload.is_private)
+
+    if "target_audiences" in update_data:
+        audience_ids, _, audience_present_names = _resolve_metadata_audiences(
+            db, payload.target_audiences or []
+        )
+        qa.target_audiences = payload.target_audiences or []
+        qdrant_payload["audience_ids"] = audience_ids
+        qdrant_payload["audience_names"] = audience_present_names
+
+    try:
+        if qa.status == "approved" and qdrant_payload:
+            _set_qdrant_payload_by_filter(
+                "training_qa",
+                "question_id",
+                question_id,
+                qdrant_payload,
+            )
+        db.commit()
+        db.refresh(qa)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not update question metadata: {exc}",
+        ) from exc
+
+    return {
+        "question_id": qa.question_id,
+        "question": qa.question,
+        "answer": qa.answer,
+        "intent_id": qa.intent_id,
+        "intent_name": qa.intent.intent_name if qa.intent else None,
+        "status": qa.status,
+        "created_at": qa.created_at,
+        "approved_at": qa.approved_at,
+        "created_by": qa.created_by,
+        "approved_by": qa.approved_by,
+        "created_by_name": qa.created_by_user.full_name if qa.created_by_user else None,
+        "approved_by_name": qa.approved_by_user.full_name if qa.approved_by_user else None,
+        "reject_reason": getattr(qa, "reject_reason", None),
+        "target_audiences": getattr(qa, "target_audiences", []),
+        "is_private": getattr(qa, "is_private", False),
     }
 
 

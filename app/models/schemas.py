@@ -356,6 +356,12 @@ class TrainingQuestionDeletedResponse(TrainingQuestionResponse):
     deleted_by_name: Optional[str]
 
 
+class TrainingQuestionMetadataUpdate(BaseModel):
+    intent_id: Optional[int] = None
+    is_private: Optional[bool] = None
+    target_audiences: Optional[List[str]] = None
+
+
 class FaqStatisticsBase(BaseModel):
     usage_count: int
     success_rate: float
@@ -418,6 +424,14 @@ class KnowledgeBaseDocumentDeletedResponse(KnowledgeBaseDocumentResponse):
     deleted_by_name: Optional[str]
 
 
+class KnowledgeBaseDocumentMetadataUpdate(BaseModel):
+    title: Optional[str] = None
+    category: Optional[str] = None
+    intent_id: Optional[int] = None
+    is_private: Optional[bool] = None
+    target_audiences: Optional[List[str]] = None
+
+
 class DocumentChunkBase(BaseModel):
     chunk_text: str
     created_at: Optional[date]
@@ -463,12 +477,15 @@ class DocumentDetailResponse(BaseModel):
     created_by: Optional[int] = None
     reviewed_by: Optional[int] = None
     reviewed_at: Optional[datetime] = None
-    TrainingQuestionResponse
+    created_by_name: Optional[str] = None
+    reviewed_by_name: Optional[str] = None
+    reject_reason: Optional[str] = None
     target_audiences: Optional[List[str]] = []
     intent_id: Optional[int] = None
     intent_name: Optional[str] = None
     content_char_count: int
     qdrant_points_count: int
+    is_private: Optional[bool] = False
     is_ocr: Optional[bool] = False
     path_txt: Optional[str] = None
 
