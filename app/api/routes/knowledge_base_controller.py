@@ -9,6 +9,7 @@ from fastapi import (
     Query,
 )
 from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy import text
 from sqlalchemy.orm import Session, joinedload, defer
 from typing import List, Optional
 from pathlib import Path
@@ -18,7 +19,7 @@ import uuid
 from datetime import datetime
 from qdrant_client import models
 
-from app.models.database import init_db, get_db
+from app.models.database import init_db, get_db, engine
 from app.models.schemas import (
     KnowledgeBaseDocumentDeletedResponse,
     KnowledgeBaseDocumentMetadataUpdate,
@@ -565,7 +566,7 @@ def get_all_training_questions(
                 "question": tqa.question,
                 "answer": tqa.answer,
                 "intent_id": tqa.intent_id,
-                "intent_name": tqa.intent.intent_name,
+                "intent_name": tqa.intent.intent_name if tqa.intent else None,
                 "status": tqa.status,
                 "created_at": tqa.created_at.date() if tqa.created_at else None,
                 "approved_at": tqa.approved_at.date() if tqa.approved_at else None,
@@ -599,17 +600,42 @@ def get_all_documents(
     - All users can see all documents regardless of status
     - Use ?status= query parameter to filter by specific status
     """
-    # Build query with intent joined to avoid N+1, defer heavy content column
-    query = db.query(entities.KnowledgeBaseDocument).options(
-        joinedload(entities.KnowledgeBaseDocument.intent),
-        defer(entities.KnowledgeBaseDocument.content),
-    )
-    query = query.filter(entities.KnowledgeBaseDocument.status != "deleted")
-    # Apply status filter if provided
+    # Select only list-view fields. Use an autocommit connection for this read-only
+    # listing because this local Postgres connection can time out on transaction
+    # commit/rollback after larger read queries.
+    sql = """
+        SELECT
+            d.document_id,
+            d.title,
+            d.file_path,
+            d.category,
+            d.created_at,
+            d.updated_at,
+            d.created_by,
+            d.status,
+            d.is_private,
+            d.is_ocr,
+            d.reviewed_by,
+            d.reviewed_at,
+            d.reject_reason,
+            d.target_audiences,
+            d.intend_id AS intent_id,
+            i.intent_name,
+            author.full_name AS created_by_name,
+            reviewer.full_name AS reviewed_by_name
+        FROM "KnowledgeBaseDocument" d
+        LEFT JOIN "Intent" i ON i.intent_id = d.intend_id
+        LEFT JOIN "Users" author ON author.user_id = d.created_by
+        LEFT JOIN "Users" reviewer ON reviewer.user_id = d.reviewed_by
+        WHERE d.status != :deleted_status
+    """
+    params = {"deleted_status": "deleted"}
     if status:
-        query = query.filter(entities.KnowledgeBaseDocument.status == status)
+        sql += " AND d.status = :status"
+        params["status"] = status
 
-    documents = query.all()
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        documents = conn.execute(text(sql), params).mappings().all()
 
     # Convert to response format
     result = []
@@ -624,15 +650,16 @@ def get_all_documents(
                 "updated_at": doc.updated_at,
                 "created_by": doc.created_by,
                 "status": doc.status,
+                "is_private": bool(doc.is_private),
                 "is_ocr": doc.is_ocr,
                 "reviewed_by": doc.reviewed_by,
-                "created_by_name": doc.author.full_name if doc.author else None,
+                "created_by_name": doc.created_by_name,
                 "reviewed_at": doc.reviewed_at,
-                "reviewed_by_name": doc.reviewer.full_name if doc.reviewer else None,
-                "reject_reason": getattr(doc, "reject_reason", None),
-                "target_audiences": getattr(doc, "target_audiences", []),
-                "intent_id": doc.intent.intent_id if doc.intent else None,
-                "intent_name": doc.intent.intent_name if doc.intent else None,
+                "reviewed_by_name": doc.reviewed_by_name,
+                "reject_reason": doc.reject_reason,
+                "target_audiences": doc.target_audiences or [],
+                "intent_id": doc.intent_id,
+                "intent_name": doc.intent_name,
             }
         )
 
