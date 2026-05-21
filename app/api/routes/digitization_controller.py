@@ -256,33 +256,36 @@ def start_ocr(
                 bdoc.completed_pages = 0
                 bdb.commit()
 
+                output_pdf = fitz.open()
+
                 for idx in range(total):
                     page = src_pdf[idx]
                     pix = page.get_pixmap(dpi=ocr_dpi)
                     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
-                    page_text, page_acc = _ocr_page(img, "vie")
+                    _, page_acc = _ocr_page(img, "vie")
 
-                    if page_text and page_text.strip():
-                        page.insert_textbox(
-                            fitz.Rect(0, 0, page.rect.width, page.rect.height),
-                            page_text,
-                            fontsize=4,
-                            color=(1, 1, 1),
-                            render_mode=3,
-                        )
+                    try:
+                        pdf_bytes = pytesseract.image_to_pdf_or_hocr(img, extension='pdf', lang="vie")
+                    except pytesseract.TesseractError:
+                        pdf_bytes = pytesseract.image_to_pdf_or_hocr(img, extension='pdf', lang="eng")
+
+                    tmp = fitz.open("pdf", pdf_bytes)
+                    output_pdf.insert_pdf(tmp)
+                    tmp.close()
 
                     page_accuracies.append(page_acc)
                     bdoc.completed_pages = idx + 1
                     bdb.commit()
 
-                src_pdf.save(
+                src_pdf.close()
+                output_pdf.save(
                     str(output_path),
                     deflate=True,
                     garbage=4,
                     clean=True,
                 )
-                src_pdf.close()
+                output_pdf.close()
             else:
                 bdoc.total_pages = 1
                 bdoc.completed_pages = 0
