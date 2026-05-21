@@ -5,7 +5,10 @@ import json
 import re
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import (
+    MarkdownHeaderTextSplitter,
+    RecursiveCharacterTextSplitter,
+)
 from langchain.chat_models import init_chat_model
 from qdrant_client import QdrantClient, AsyncQdrantClient, models
 from sentence_transformers import CrossEncoder
@@ -304,7 +307,7 @@ class TrainingService:
         # assume async predict exists
         enriched = await self.llm.ainvoke(prompt)
         print("==== RAW RESPONSE ====")
-        print(enriched.content)
+        print(user_message)
         print("======================")
         # fallback: if empty use original
         enriched_txt = (
@@ -321,7 +324,7 @@ class TrainingService:
         self, enriched_query: str, matched_question: str, answer: str
     ) -> bool:
         prompt = f"""
-        Bạn là chuyên gia đánh giá giữa câu hỏi tìm kiếm, câu hỏi trong cơ sở dữ liệu và câu trả lời, đánh giá độ phù hợp cho 1 hệ thống chat RAG tuyển sinh.
+        Bạn là chuyên gia đánh giá giữa câu hỏi tìm kiếm, câu hỏi trong cơ sở dữ liệu và câu trả lời, đánh giá độ phù hợp cho 1 hệ thống chat RAG tuyển sinh của trường {self.university_name}.
 
         Câu hỏi tìm kiếm (đã chuẩn hóa): "{enriched_query}"
         Câu hỏi DB: "{matched_question}"
@@ -329,14 +332,13 @@ class TrainingService:
         Nhiệm vụ:
         Xác định liệu "Câu hỏi DB + Câu trả lời" có thực sự trả lời đúng "Câu hỏi tìm kiếm" hay không.
         1. Hãy trả lời duy nhất chỉ một từ "true" khi:
-        - Nội dung câu trả lời trực tiếp giải quyết đúng ý định (intent) của câu hỏi tìm kiếm
-        - Không chỉ trùng từ khóa, mà phải đúng ngữ nghĩa
-        - Người dùng đọc câu trả lời sẽ thấy "đúng câu hỏi của mình"
+        - Câu trả lời trực tiếp giải quyết đúng ý định (intent) của câu hỏi.
+        - Câu hỏi mang tính chất chào hỏi (xin chào, hello, hi, bot ơi).
         2. Hãy trả lời duy nhất chỉ một từ "false" khi:
-        - Chỉ trùng từ khóa nhưng khác ý nghĩa
-        - Trả lời lệch chủ đề
-        - Trả lời quá chung chung, không giải quyết câu hỏi
-        - Câu hỏi tìm kiếm và câu hỏi DB khác intent
+        - Chỉ trùng từ khóa nhưng khác ý nghĩa hoặc khác chủ đề
+        - Câu trả lời quá chung chung, không giải quyết đúng câu hỏi
+        - Câu hỏi người dùng hỏi X nhưng câu trả lời DB nói về Y
+        - Câu hỏi người dùng quá rộng, câu trả lời DB quá cụ thể hoặc ngược lại
         3. Đặc biệt:
         - Nếu câu hỏi tìm kiếm là lời chào (xin chào, hello, hi): trả về true
         ---
@@ -560,30 +562,39 @@ class TrainingService:
             {context}
             === CÂU HỎI ===
             {query}
+            === PHONG CÁCH TRẢ LỜI ===
+            Cách trả lời:
+                - Dễ hiểu
+                - Thân thiện
+                - Trả lời bằng tiếng Việt
+                - Dùng ngôn ngữ đời thường
+                - Dùng Markdown linh hoạt: chỉ dùng tiêu đề ## và gạch đầu dòng khi câu trả lời có nhiều mục rõ ràng. Câu trả lời ngắn thì viết thành đoạn văn tự nhiên, không cần chia heading.
+                - Nếu trong câu trả lời có đường dẫn thì hãy markdown đường dẫn
+            Không được:
+                - Lặp lại ý người dùng
+                - Dùng ngôn ngữ AI máy móc, robot
+            Cách phản hồi:
+                - Trả lời trực tiếp câu hỏi
+                - Nếu cần, hướng dẫn từng bước
+                - Gợi ý thông tin liên quan hữu ích
             === HƯỚNG DẪN ===
-            - Trả lời bằng tiếng Việt
             - Dựa vào thông tin tham khảo trên được cung cấp
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
-            - Trả lời theo định dạng Markdown: dùng tiêu đề ##, gạch đầu dòng -, xuống dòng rõ ràng.
-            - Nếu trong câu trả lời có đường dẫn thì hãy markdown đường dẫn
-            - Hãy tạo ra câu trả lời không quá dài, gói gọn ý chính, chỉ khi câu hỏi yêu cầu "chi tiết" thì mới tạo câu trả lời đầy đủ
             - Bạn là chatbot tra cứu thông tin chuyên nghiệp của {self.university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác hay phân hiệu khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
-            - Nếu không tìm thấy thông tin → Nói rõ hệ thống chưa có dữ liệu, → KHÔNG tự chọn email/SĐT/fanpage từ context để gợi ý
-                trừ khi chunk đó TRỰC TIẾP xử lý đúng vấn đề được hỏi.
-                Ví dụ: hỏi lịch thi → KHÔNG dùng email phòng ký túc xá
+            - Nếu không tìm thấy thông tin → Nói rõ hệ thống chưa có dữ liệu, →  Có thể chọn đường dẫn chọn phù hợp từ context để gợi ý
+            chỉ khi đường dẫn đó TRỰC TIẾP xử lý đúng vấn đề được hỏi.
+            - Không cần nhắc lại CÂU HỎI của người dùng
             - Khi trả lời về một đơn vị/phòng ban cụ thể, CHỈ sử dụng thông tin
                 từ chunk có heading KHỚP CHÍNH XÁC với tên đơn vị được hỏi.
                 KHÔNG lấy thông tin (website, email, SĐT) từ chunk của đơn vị khác
                 dù tên có vẻ tương tự.
-            - Hãy phân biệt rõ thực thể 'Trường' (toàn trường/cơ sở chính) và 'Phân hiệu tại TP.HCM/UTC2", Nếu tài liệu chỉ nói chung về 'Trường' mà không chỉ đích danh 'Phân hiệu',
-              - Trong trường hợp người dùng hỏi về Phân hiệu nhưng tài liệu chỉ có số liệu của Toàn trường, bạn phải trả lời rõ ràng theo biểu mẫu sau: 
-  "Hiện tại tài liệu chưa có số liệu riêng của Phân hiệu vào mốc thời gian này, [Nếu có số liệu Phân hiệu ở mốc khác thì bổ sung thêm]".
-            - Không cần phải chào hỏi mỗi lần trả lời, vào thẳng vấn đề chính
+            - Hãy phân biệt rõ thực thể 'Trường' (toàn trường/cơ sở chính) và 'Phân hiệu tại TP.HCM/UTC2", Nếu tài liệu chỉ nói chung về 'Trường' mà không chỉ đích danh 'Phân hiệu' thì KHÔNG ĐƯỢC tự ý gán đó là số liệu của Phân hiệu,
+                + Trong trường hợp người dùng hỏi về Phân hiệu nhưng tài liệu chỉ có số liệu của Toàn trường, bạn phải trả lời rõ ràng theo biểu mẫu sau: "Hiện tại tài liệu chưa có số liệu riêng của Phân hiệu vào mốc thời gian này, [Nếu có số liệu Phân hiệu ở mốc khác thì bổ sung thêm]".
             - Nếu câu hỏi chỉ là chào hỏi, hoặc các câu xã giao, hãy trả lời bằng lời chào thân thiện, giới thiệu về bản thân chatbot, KHÔNG kéo thêm thông tin chi tiết trong context.
-            - Khi có thể, hãy **giải thích thêm bối cảnh hoặc gợi ý bước tiếp theo**, ví dụ:  
-                “Bạn muốn mình gửi danh sách ngành đào tạo kèm chuyên ngành chi tiết không?”  
-                hoặc  
-                “Nếu bạn quan tâm học bổng, mình có thể nói rõ các loại học bổng hiện có nhé!”
+            - Cuối câu trả lời, nếu phù hợp, hãy gợi ý một chủ đề liên quan 
+                mà người dùng có thể quan tâm tiếp theo (điểm chuẩn, học bổng, 
+                chuyên ngành, học phí...). Thay đổi gợi ý theo ngữ cảnh câu hỏi, 
+                không lặp lại cùng một câu mẫu.
             """
             full_response = ""
             async for chunk in self.llm.astream(prompt):
@@ -664,17 +675,29 @@ class TrainingService:
             {chat_history}
             === CÂU TRẢ LỜI CHÍNH THỨC ===
             {context}
-
             === CÂU HỎI NGƯỜI DÙNG ===
             {query}
-
+            Cách trả lời:
+                - Dễ hiểu
+                - Thân thiện
+                - Trả lời bằng tiếng Việt
+                - Dùng ngôn ngữ đời thường
+                - Dùng Markdown linh hoạt: chỉ dùng tiêu đề ## và gạch đầu dòng khi câu trả lời có nhiều mục hoặc nhiều ý rõ ràng. Câu trả lời ngắn thì viết thành đoạn văn tự nhiên, không cần chia heading.
+                - Nếu trong câu trả lời có đường dẫn thì hãy markdown đường dẫn
+            Không được:
+                - Lặp lại ý người dùng
+                - Dùng ngôn ngữ AI máy móc, robot
+            Cách phản hồi:
+                - Nội dung cốt lõi BẮT BUỘC phải dựa trên [CÂU TRẢ LỜI CHÍNH THỨC]. Tuyệt đối không tự bịa số liệu, quy chế hay thông tin sai lệch.
+                - Tuy nhiên, bạn được phép DIỄN ĐẠT LẠI (paraphrase) câu trả lời đó sao cho tự nhiên, mượt mà và giống con người hơn. KHÔNG cần copy/paste y chang từng chữ một cách máy móc.
+                - Dù [CÂU TRẢ LỜI CHÍNH THỨC] không có thông tin mở rộng, ở cuối mỗi câu trả lời, bạn VẪN PHẢI chủ động đặt một câu hỏi mở để dẫn dắt người dùng khám phá thêm.
+                - Ví dụ: Nếu người dùng hỏi về "Học phí", hãy hỏi thêm "Bạn có muốn mình tư vấn thêm về các chính sách học bổng hoặc phương thức xét tuyển không?".
+                - Nhấn mạnh: Chỉ HỎI để định hướng, tuyệt đối KHÔNG tự bịa ra dữ liệu chi tiết của phần gợi ý.
+                - Gợi ý thông tin liên quan hữu ích
             === HƯỚNG DẪN TRẢ LỜI ===
-            - Trả lời theo định dạng Markdown: dùng tiêu đề ##, gạch đầu dòng -, xuống dòng rõ ràng.
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
-            - Hãy trả lời chính xác bằng "CÂU TRẢ LỜI CHÍNH THỨC" mà KHÔNG SUY DIỄN THÊM.
             - Bạn là tư vấn tuyển sinh của trường {self.university_name}, nhớ kiểm tra kĩ rõ ràng câu hỏi, nếu câu hỏi yêu cầu thông tin của một trường khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
             - Nếu câu hỏi chỉ là chào hỏi, hỏi thời tiết, hoặc các câu xã giao, hãy trả lời bằng lời chào thân thiện, giới thiệu về bản thân chatbot, KHÔNG kéo thêm thông tin chi tiết trong context.
-            - Không cần phải chào hỏi mỗi lần trả lời, vào thẳng vấn đề chính
             """
             full_response = ""
             async for chunk in self.llm.astream(prompt):
@@ -1515,6 +1538,146 @@ class TrainingService:
             yield f"data: {json.dumps({'event': 'error', 'message': str(e)})}\n\n"
         finally:
             db.close()
+
+    def _extract_and_chunk(self, doc, ext: str) -> tuple[list[str], bool]:
+        """
+        Extract content từ file và chunk có header-context.
+        Chạy trong executor (blocking IO).
+
+        Returns:
+            (chunks, use_header_split)
+            use_header_split = True nếu đã dùng MarkdownHeaderTextSplitter
+        """
+
+        char_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1500, chunk_overlap=200
+        )
+        header_splitter = MarkdownHeaderTextSplitter(
+            headers_to_split_on=[("#", "h1"), ("##", "h2"), ("###", "h3")],
+            strip_headers=False,
+        )
+
+        # --- Bước 1: Lấy raw bytes ---
+        file_bytes = self._read_file_bytes(doc, ext)
+        print(f"[DEBUG] ext={ext}")
+        print(f"[DEBUG] file_bytes length={len(file_bytes)}")
+        print(f"[DEBUG] file_bytes[:20]={file_bytes[:20]}")
+        # --- Bước 2: Route theo loại file ---
+
+        # DOCX — extract_text_from_docx đã trả về markdown
+        if ext in (".docx", ".doc"):
+            markdown_content = DocumentProcessor.extract_text_from_docx_2(file_bytes)
+            print(f"[DEBUG] markdown_content[:500]=\n{markdown_content[:500]}")
+            has_headings = any(
+                line.startswith("#") for line in markdown_content.splitlines()
+            )
+            print(f"[DEBUG] has_headings={has_headings}")
+
+            header_docs = header_splitter.split_text(markdown_content)
+            print(f"[DEBUG] header_docs count={len(header_docs)}")
+            print(
+                f"[DEBUG] header_docs[0].metadata={header_docs[0].metadata if header_docs else 'empty'}"
+            )
+            ...
+            return (
+                self._header_chunks(markdown_content, header_splitter, char_splitter),
+                True,
+            )
+
+        # PDF — thử pdfplumber (có heading), fallback OCR (plain text)
+        if ext == ".pdf":
+            markdown_content = DocumentProcessor.extract_text_from_pdf_2(
+                file_bytes, os.path.basename(doc.file_path)
+            )
+            # Docling luôn trả về markdown kể cả PDF scan
+            # chỉ cần check có heading không để quyết định splitter
+            has_headings = any(
+                line.startswith("#") for line in markdown_content.splitlines()
+            )
+            if has_headings:
+                return (
+                    self._header_chunks(
+                        markdown_content, header_splitter, char_splitter
+                    ),
+                    True,
+                )
+            return self._plain_chunks(markdown_content, char_splitter), False
+
+        # TXT — plain text, không có heading
+        if ext == ".txt":
+            content = file_bytes.decode("utf-8", errors="ignore")
+            content = DocumentProcessor.clean_text(content)
+            return self._plain_chunks(content, char_splitter), False
+
+        # Các định dạng còn lại (xlsx, xls, pptx, html)
+        mime_map = {
+            ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".xls": "application/vnd.ms-excel",
+            ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ".html": "text/html",
+        }
+        content = DocumentProcessor.extract_text(
+            file_bytes,
+            os.path.basename(doc.file_path),
+            mime_map.get(ext, "text/plain"),
+        )
+        return self._plain_chunks(content, char_splitter), False
+
+    def _read_file_bytes(self, doc, ext: str) -> bytes:
+
+        if ext in (".docx", ".doc", ".pdf"):
+            abs_path = os.path.abspath(doc.file_path)
+            if not os.path.exists(abs_path):
+                raise FileNotFoundError(f"File gốc không tìm thấy: {abs_path}")
+            with open(abs_path, "rb") as f:
+                return f.read()
+
+        # Các định dạng khác: dùng content đã lưu nếu có
+        if getattr(doc, "content", None):
+            if isinstance(doc.content, bytes):
+                return doc.content
+            return doc.content.encode("utf-8")
+
+        txt_path = getattr(doc, "path_txt", None)
+        if txt_path:
+            resolved = (
+                txt_path
+                if os.path.isabs(txt_path)
+                else os.path.join(os.getcwd(), txt_path)
+            )
+            if os.path.exists(resolved):
+                with open(resolved, "rb") as f:
+                    return f.read()
+
+        abs_path = os.path.abspath(doc.file_path)
+        with open(abs_path, "rb") as f:
+            return f.read()
+
+    def _header_chunks(
+        self, markdown: str, header_splitter, char_splitter
+    ) -> list[str]:
+        """Chunk có header context — dùng cho DOCX và PDF có heading."""
+        header_docs = header_splitter.split_text(markdown)
+        split_docs = char_splitter.split_documents(header_docs)
+
+        chunks = []
+        for doc_chunk in split_docs:
+            headers = [
+                doc_chunk.metadata[k]
+                for k in ["h1", "h2", "h3"]
+                if k in doc_chunk.metadata
+            ]
+            text = doc_chunk.page_content.strip()
+            if not text:
+                continue
+            if headers:
+                text = f"[{' > '.join(headers)}]\n{text}"
+            chunks.append(text)
+        return chunks
+
+    def _plain_chunks(self, content: str, char_splitter) -> list[str]:
+        """Chunk plain text — dùng cho TXT, OCR, xlsx, pptx..."""
+        return [c for c in char_splitter.split_text(content) if c.strip()]
 
     def delete_document(self, db: Session, document_id: int, current_user: Users):
         doc = db.query(KnowledgeBaseDocument).filter_by(document_id=document_id).first()
