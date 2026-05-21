@@ -214,7 +214,6 @@ def start_ocr(
         import pytesseract
         from PIL import Image
         import fitz
-        import io
 
         bdb = SessionLocal()
         try:
@@ -226,62 +225,97 @@ def start_ocr(
 
             ext = Path(bdoc.file_path).suffix.lower()
             file_abs = str(Path(bdoc.file_path).resolve())
-
-            # Directory for output
             output_dir = Path("uploads/ocr/output")
             output_dir.mkdir(parents=True, exist_ok=True)
             output_path = output_dir / f"searchable_{uuid.uuid4().hex}.pdf"
-            output_pdf = fitz.open()
+            ocr_dpi = 150
+            page_accuracies: list[float] = []
+
+            def _ocr_page(img, lang):
+                try:
+                    data = pytesseract.image_to_data(img, lang=lang, output_type=pytesseract.Output.DICT)
+                except pytesseract.TesseractError:
+                    data = pytesseract.image_to_data(img, lang="eng", output_type=pytesseract.Output.DICT)
+                # Build text from words
+                words = []
+                confs = []
+                for i, word in enumerate(data['text']):
+                    if word.strip():
+                        words.append(word.strip())
+                        conf = int(data['conf'][i])
+                        if conf > 0:
+                            confs.append(conf)
+                text = ' '.join(words)
+                avg_conf = round(sum(confs) / len(confs), 1) if confs else 0.0
+                return text, avg_conf
 
             if ext == '.pdf':
                 src_pdf = fitz.open(file_abs)
                 total = src_pdf.page_count
-                bdoc.status = "processing"
                 bdoc.total_pages = total
                 bdoc.completed_pages = 0
                 bdb.commit()
 
+                output_pdf = fitz.open()
+
                 for idx in range(total):
                     page = src_pdf[idx]
-                    pix = page.get_pixmap(dpi=300)
+                    pix = page.get_pixmap(dpi=ocr_dpi)
                     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+                    _, page_acc = _ocr_page(img, "vie")
 
                     try:
                         pdf_bytes = pytesseract.image_to_pdf_or_hocr(img, extension='pdf', lang="vie")
                     except pytesseract.TesseractError:
                         pdf_bytes = pytesseract.image_to_pdf_or_hocr(img, extension='pdf', lang="eng")
 
-                    # Insert single-page searchable PDF into output
-                    tmp_pdf = fitz.open("pdf", pdf_bytes)
-                    output_pdf.insert_pdf(tmp_pdf)
-                    tmp_pdf.close()
+                    tmp = fitz.open("pdf", pdf_bytes)
+                    output_pdf.insert_pdf(tmp)
+                    tmp.close()
 
+                    page_accuracies.append(page_acc)
                     bdoc.completed_pages = idx + 1
                     bdb.commit()
 
                 src_pdf.close()
+                output_pdf.save(
+                    str(output_path),
+                    deflate=True,
+                    garbage=4,
+                    clean=True,
+                )
+                output_pdf.close()
             else:
                 bdoc.total_pages = 1
                 bdoc.completed_pages = 0
                 bdb.commit()
 
                 img = Image.open(file_abs)
+                max_dim = 2000
+                if max(img.size) > max_dim:
+                    ratio = max_dim / max(img.size)
+                    img = img.resize((int(img.width * ratio), int(img.height * ratio)), Image.LANCZOS)
+
+                _, page_acc = _ocr_page(img, "vie")
+
                 try:
                     pdf_bytes = pytesseract.image_to_pdf_or_hocr(img, extension='pdf', lang="vie")
                 except pytesseract.TesseractError:
                     pdf_bytes = pytesseract.image_to_pdf_or_hocr(img, extension='pdf', lang="eng")
 
-                tmp_pdf = fitz.open("pdf", pdf_bytes)
-                output_pdf.insert_pdf(tmp_pdf)
-                tmp_pdf.close()
+                with open(str(output_path), "wb") as f:
+                    f.write(pdf_bytes)
 
+                page_accuracies.append(page_acc)
                 bdoc.completed_pages = 1
                 bdb.commit()
 
-            output_pdf.save(str(output_path))
-            output_pdf.close()
+            # Average accuracy across all pages
+            overall_accuracy = round(sum(page_accuracies) / len(page_accuracies), 1) if page_accuracies else 0.0
 
             bdoc.output_pdf_path = str(output_path)
+            bdoc.ocr_accuracy = overall_accuracy
             bdoc.status = "completed"
             bdb.commit()
 
@@ -348,6 +382,7 @@ def list_documents(
             "folder_id": doc.folder_id,
             "total_pages": doc.total_pages or 0,
             "completed_pages": doc.completed_pages or 0,
+            "ocr_accuracy": doc.ocr_accuracy,
             "error_message": doc.error_message,
         })
 
@@ -386,6 +421,7 @@ def get_document(
         "updated_at": doc.updated_at,
         "total_pages": doc.total_pages or 0,
         "completed_pages": doc.completed_pages or 0,
+        "ocr_accuracy": doc.ocr_accuracy,
         "error_message": doc.error_message,
     }
 
@@ -413,6 +449,7 @@ def get_progress(
         "total_pages": total,
         "completed_pages": completed,
         "progress_percent": progress_percent,
+        "ocr_accuracy": doc.ocr_accuracy,
         "error_message": doc.error_message,
     }
 

@@ -754,6 +754,7 @@ class OcrDocumentResponse(OcrDocumentBase):
     updated_at: Optional[datetime] = None
     total_pages: int = 0
     completed_pages: int = 0
+    ocr_accuracy: Optional[float] = None
     error_message: Optional[str] = None
 
     model_config = {"from_attributes": True}
@@ -772,6 +773,7 @@ class OcrDocumentListResponse(BaseModel):
     folder_id: Optional[int] = None
     total_pages: int = 0
     completed_pages: int = 0
+    ocr_accuracy: Optional[float] = None
     error_message: Optional[str] = None
 
     model_config = {"from_attributes": True}
