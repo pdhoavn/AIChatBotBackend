@@ -7,7 +7,13 @@ from fastapi import (
     Form,
     Query,
 )
-from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
+from fastapi.responses import JSONResponse, FileResponse
+from urllib.parse import quote
+import secrets
+import time
+
+# Temporary download tokens: token → {doc_id, exp}
+_dl_tokens: dict = {}
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from pathlib import Path
@@ -411,13 +417,51 @@ def get_progress(
     }
 
 
-@router.get("/documents/{document_id}/download")
-def download_output_pdf(
+@router.post("/documents/{document_id}/prepare-download")
+def prepare_download(
     document_id: int,
     db: Session = Depends(get_db),
     current_user: entities.Users = Depends(check_digitization_permission),
 ):
-    """Download the searchable PDF output"""
+    """Create a short-lived download token for native browser download"""
+    doc = db.query(entities.OcrDocument).filter(
+        entities.OcrDocument.document_id == document_id
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if doc.status != "completed":
+        raise HTTPException(status_code=400, detail="OCR not completed")
+    if not doc.output_pdf_path:
+        raise HTTPException(status_code=404, detail="No output PDF found")
+
+    token = secrets.token_urlsafe(32)
+    _dl_tokens[token] = {"doc_id": document_id, "exp": time.time() + 120}  # 2 phút
+
+    # Dọn token hết hạn
+    expired = [k for k, v in _dl_tokens.items() if v["exp"] < time.time()]
+    for k in expired:
+        del _dl_tokens[k]
+
+    return {"token": token}
+
+
+@router.get("/documents/{document_id}/download")
+def download_output_pdf(
+    document_id: int,
+    token: Optional[str] = Query(None),
+    inline: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: Optional[entities.Users] = Depends(get_current_user),
+):
+    """Download the searchable PDF output (via Bearer token or temp query token)"""
+    # Xác thực: Bearer auth hoặc temp token
+    if token:
+        td = _dl_tokens.pop(token, None)
+        if not td or td["exp"] < time.time() or td["doc_id"] != document_id:
+            raise HTTPException(status_code=403, detail="Invalid or expired download token")
+    elif not current_user:
+        raise HTTPException(status_code=403, detail="Not authenticated")
+
     doc = db.query(entities.OcrDocument).filter(
         entities.OcrDocument.document_id == document_id
     ).first()
@@ -434,22 +478,15 @@ def download_output_pdf(
     if not os.path.exists(resolved_path):
         raise HTTPException(status_code=404, detail="Output PDF file not found on disk")
 
-    # Dùng filename ASCII để tránh lỗi encoding header với ký tự tiếng Việt
-    safe_filename = f"searchable_{doc.document_id}.pdf"
+    display_name = f"{doc.file_name}_searchable.pdf"
+    encoded_name = quote(display_name, safe='')
+    disposition = "inline" if inline else "attachment"
 
-    def iter_file(path: str, chunk_size: int = 1024 * 1024):
-        with open(path, "rb") as f:
-            while True:
-                chunk = f.read(chunk_size)
-                if not chunk:
-                    break
-                yield chunk
-
-    return StreamingResponse(
-        iter_file(resolved_path),
+    return FileResponse(
+        path=resolved_path,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="{safe_filename}"',
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{encoded_name}"
         },
     )
 
