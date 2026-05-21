@@ -701,6 +701,7 @@ class OcrDocument(Base):
     output_pdf_path = Column(String, nullable=True)  # Path to searchable PDF output
     total_pages = Column(Integer, default=0)  # Total pages to OCR
     completed_pages = Column(Integer, default=0)  # Pages processed so far
+    ocr_accuracy = Column(Float, nullable=True)  # Average OCR confidence (0-100)
     error_message = Column(Text, nullable=True)
 
     # Relationships
