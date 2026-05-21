@@ -665,3 +665,44 @@ class Article(Base):
     author_user = relationship("Users", back_populates="articles")
     major = relationship("Major", back_populates="articles")
     specialization = relationship("Specialization", back_populates="articles")
+
+
+# =====================
+# DOCUMENT DIGITIZATION (OCR)
+# =====================
+class OcrFolder(Base):
+    __tablename__ = "OcrFolder"
+
+    folder_id = Column(Integer, primary_key=True, autoincrement=True)
+    folder_name = Column(String, nullable=False)
+    parent_id = Column(Integer, ForeignKey("OcrFolder.folder_id"), nullable=True)
+    created_by = Column(Integer, ForeignKey("Users.user_id"))
+    created_at = Column(DateTime, default=datetime.now)
+
+    # Relationships
+    parent = relationship("OcrFolder", remote_side=[folder_id], backref="children")
+    creator = relationship("Users", foreign_keys=[created_by])
+    documents = relationship("OcrDocument", back_populates="folder", cascade="all, delete-orphan")
+
+
+class OcrDocument(Base):
+    __tablename__ = "OcrDocument"
+
+    document_id = Column(Integer, primary_key=True, autoincrement=True)
+    file_name = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    file_type = Column(String, nullable=False)  # PNG, JPG, PDF, etc.
+    full_name = Column(String, nullable=True)  # Người xử lý / Họ và tên
+    status = Column(String, default="pending")  # pending, processing, completed, failed
+    folder_id = Column(Integer, ForeignKey("OcrFolder.folder_id"), nullable=True)
+    created_by = Column(Integer, ForeignKey("Users.user_id"))
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    output_pdf_path = Column(String, nullable=True)  # Path to searchable PDF output
+    total_pages = Column(Integer, default=0)  # Total pages to OCR
+    completed_pages = Column(Integer, default=0)  # Pages processed so far
+    error_message = Column(Text, nullable=True)
+
+    # Relationships
+    folder = relationship("OcrFolder", back_populates="documents")
+    creator = relationship("Users", foreign_keys=[created_by])

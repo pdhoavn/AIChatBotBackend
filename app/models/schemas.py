@@ -712,3 +712,66 @@ class TemplateResponse(TemplateBase):
 
     class Config:
         orm_mode = True
+
+
+# ================= DOCUMENT DIGITIZATION (OCR) =================
+class OcrFolderBase(BaseModel):
+    folder_name: str
+    parent_id: Optional[int] = None
+
+
+class OcrFolderCreate(OcrFolderBase):
+    pass
+
+
+class OcrFolderUpdate(BaseModel):
+    folder_name: Optional[str] = None
+
+
+class OcrFolderResponse(OcrFolderBase):
+    folder_id: int
+    created_by: Optional[int] = None
+    created_at: Optional[datetime] = None
+    children: List["OcrFolderResponse"] = []
+
+    model_config = {"from_attributes": True}
+
+
+class OcrDocumentBase(BaseModel):
+    file_name: str
+    file_type: str
+    full_name: Optional[str] = None
+    folder_id: Optional[int] = None
+
+
+class OcrDocumentResponse(OcrDocumentBase):
+    document_id: int
+    file_path: str
+    status: str
+    created_by: Optional[int] = None
+    creator_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    total_pages: int = 0
+    completed_pages: int = 0
+    error_message: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class OcrDocumentListResponse(BaseModel):
+    document_id: int
+    file_name: str
+    file_type: str
+    full_name: Optional[str] = None
+    status: str
+    created_by: Optional[int] = None
+    creator_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    created_time: Optional[str] = None
+    folder_id: Optional[int] = None
+    total_pages: int = 0
+    completed_pages: int = 0
+    error_message: Optional[str] = None
+
+    model_config = {"from_attributes": True}
