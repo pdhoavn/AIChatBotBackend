@@ -536,6 +536,9 @@ def get_all_training_questions(
     status: Optional[str] = Query(
         None, description="Filter by status: draft, approved, rejected, deleted"
     ),
+    is_private: Optional[bool] = Query(
+        None, description="Filter by privacy: true for private, false for public"
+    ),
     db: Session = Depends(get_db),
     current_user: entities.Users = Depends(check_view_permission),
 ):
@@ -545,6 +548,7 @@ def get_all_training_questions(
 
     - All users can see all questions regardless of status
     - Use ?status= query parameter to filter by specific status
+    - Use ?is_private=true for private questions, ?is_private=false for public questions
     """
     # Build query
     query = db.query(entities.TrainingQuestionAnswer).options(
@@ -554,6 +558,13 @@ def get_all_training_questions(
     # Apply status filter if provided
     if status:
         query = query.filter(entities.TrainingQuestionAnswer.status == status)
+    if is_private is True:
+        query = query.filter(entities.TrainingQuestionAnswer.is_private.is_(True))
+    elif is_private is False:
+        query = query.filter(
+            (entities.TrainingQuestionAnswer.is_private.is_(False))
+            | (entities.TrainingQuestionAnswer.is_private.is_(None))
+        )
 
     training_questions = query.all()
 
@@ -590,6 +601,9 @@ def get_all_documents(
     status: Optional[str] = Query(
         None, description="Filter by status: draft, approved, rejected, deleted"
     ),
+    is_private: Optional[bool] = Query(
+        None, description="Filter by privacy: true for private, false for public"
+    ),
     db: Session = Depends(get_db),
     current_user: entities.Users = Depends(check_view_permission),
 ):
@@ -599,6 +613,7 @@ def get_all_documents(
 
     - All users can see all documents regardless of status
     - Use ?status= query parameter to filter by specific status
+    - Use ?is_private=true for private documents, ?is_private=false for public documents
     """
     # Select only list-view fields. Use an autocommit connection for this read-only
     # listing because this local Postgres connection can time out on transaction
@@ -633,9 +648,17 @@ def get_all_documents(
     if status:
         sql += " AND d.status = :status"
         params["status"] = status
+    if is_private is True:
+        sql += " AND d.is_private IS TRUE"
+    elif is_private is False:
+        sql += " AND COALESCE(d.is_private, false) IS FALSE"
 
-    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+    conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+    try:
         documents = conn.execute(text(sql), params).mappings().all()
+    finally:
+        conn.invalidate()
+        conn.close()
 
     # Convert to response format
     result = []
