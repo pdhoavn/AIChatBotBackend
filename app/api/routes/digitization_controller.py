@@ -260,10 +260,10 @@ def start_ocr(
 
                 for idx in range(total):
                     page = src_pdf[idx]
-                    pix = page.get_pixmap(dpi=ocr_dpi)
-                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    pix = page.get_pixmap(dpi=ocr_dpi, colorspace="GRAY")
+                    img = Image.frombytes("L", [pix.width, pix.height], pix.samples)
 
-                    _, page_acc = _ocr_page(img, "vie")
+                    page_text, page_acc = _ocr_page(img, "vie")
 
                     try:
                         pdf_bytes = pytesseract.image_to_pdf_or_hocr(img, extension='pdf', lang="vie")

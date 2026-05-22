@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     # Facebook Messenger
     FACEBOOK_PAGE_ACCESS_TOKEN: str
     FACEBOOK_VERIFY_TOKEN: str = "messenger_webhook_verify_token"
+    API_VSMARTOFFICE: str
 
     class Config:
         env_file = ".env"

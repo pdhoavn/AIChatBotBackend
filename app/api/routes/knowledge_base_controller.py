@@ -832,7 +832,9 @@ def get_document_by_id(
     }
 
 
-@router.patch("/documents/{document_id}/metadata", response_model=KnowledgeBaseDocumentResponse)
+@router.patch(
+    "/documents/{document_id}/metadata", response_model=KnowledgeBaseDocumentResponse
+)
 def update_document_metadata(
     document_id: int,
     payload: KnowledgeBaseDocumentMetadataUpdate,
@@ -1105,38 +1107,59 @@ def api_approve_document(
             )
 
             # Get content
-            content = getattr(bdoc, "content", None)
-            if not content:
-                txt_path = getattr(bdoc, "path_txt", None)
-                if txt_path:
-                    resolved = (
-                        os.path.join(os.getcwd(), txt_path)
-                        if not os.path.isabs(txt_path)
-                        else txt_path
-                    )
-                    if os.path.exists(resolved):
-                        with open(resolved, "r", encoding="utf-8") as f:
-                            content = f.read()
+            # content = getattr(bdoc, "content", None)
+            # if not content:
+            #     txt_path = getattr(bdoc, "path_txt", None)
+            #     if txt_path:
+            #         resolved = (
+            #             os.path.join(os.getcwd(), txt_path)
+            #             if not os.path.isabs(txt_path)
+            #             else txt_path
+            #         )
+            #         if os.path.exists(resolved):
+            #             with open(resolved, "r", encoding="utf-8") as f:
+            #                 content = f.read()
 
-            if not content:
+            # if not content:
+            #     btask.status = "failed"
+            #     btask.error_message = "No content to index"
+            #     bdb.commit()
+            #     return
+
+            service = TrainingService()
+            ext = os.path.splitext(bdoc.file_path)[1].lower()
+
+            try:
+                chunks, use_header_split = service._extract_and_chunk(bdoc, ext)
+            except Exception as e:
+                btask.status = "failed"
+                btask.error_message = f"Extraction failed: {str(e)}"
+                bdb.commit()
+                return
+
+            if not chunks:
                 btask.status = "failed"
                 btask.error_message = "No content to index"
                 bdb.commit()
                 return
 
-            # Split
-            from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000, chunk_overlap=200
-            )
-            chunks = text_splitter.split_text(content)
             total = len(chunks)
             btask.total_items = total
             bdb.commit()
 
-            # Embed + index
-            service = TrainingService()
+            # Split
+            # from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+            # text_splitter = RecursiveCharacterTextSplitter(
+            #     chunk_size=1000, chunk_overlap=200
+            # )
+            # chunks = text_splitter.split_text(content)
+            # total = len(chunks)
+            # btask.total_items = total
+            # bdb.commit()
+
+            # # Embed + index
+            # service = TrainingService()
             from qdrant_client.models import PointStruct
 
             for i, chunk in enumerate(chunks):
@@ -1406,7 +1429,9 @@ def update_training_question_metadata(
         "created_by": qa.created_by,
         "approved_by": qa.approved_by,
         "created_by_name": qa.created_by_user.full_name if qa.created_by_user else None,
-        "approved_by_name": qa.approved_by_user.full_name if qa.approved_by_user else None,
+        "approved_by_name": (
+            qa.approved_by_user.full_name if qa.approved_by_user else None
+        ),
         "reject_reason": getattr(qa, "reject_reason", None),
         "target_audiences": getattr(qa, "target_audiences", []),
         "is_private": getattr(qa, "is_private", False),
