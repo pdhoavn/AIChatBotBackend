@@ -362,7 +362,7 @@ class TrainingService:
     ) -> bool:
         prompt = f"""
         Bạn là hệ thống kiểm tra 2 tầng:
-        - Tầng 1 là hệ thống kiểm tra mức độ liên quan giữa câu hỏi người dùng và nội dung trong Document Base (RAG) cho chatbot RAG tư vấn tuyển sinh.
+        - Tầng 1 là hệ thống kiểm tra mức độ liên quan giữa câu hỏi người dùng và nội dung trong Document Base (RAG) cho chatbot RAG tư vấn tuyển sinh của trường {self.university_name}.
         - Tầng 2 là hệ thống kiểm tra mức độ liên quan giữa câu hỏi người dùng có liên quan đến các nội dung tư vấn ngành học hay tư vấn cho cá nhân dựa theo hồ sơ của học sinh hoặc những câu liên quan đến RIASEC, học bạ, GPA, sở thích, nguyện vọng cá nhân; hoặc yêu cầu so sánh ngành theo profile; hoặc yêu cầu gợi ý ngành phù hợp cho chatbot RAG tư vấn tuyển sinh.
         Yêu cầu kiểm tra câu hỏi người dùng có phù hợp với tầng 1 hoặc tầng 2:
         - Nếu phù hợp với tầng 1 thì trả về duy nhất 1 từ "document"
@@ -370,13 +370,15 @@ class TrainingService:
         - Nếu tầng 1 phù hợp thì không cần check đến tầng 2
         - Nếu không phù hợp với tầng 1 và tầng 2 thì trả về duy nhất 1 từ "Nope"
         - Check tầng 1(document) đầu tiên:
+        • TUYỆT ĐỐI Không được suy diễn
+        • TRƯỜNG HỢP CÓ TIÊU ĐỀ: Nếu tài liệu có chứa Tiêu đề/Header (thường nằm trong [...] hoặc bắt đầu bằng #), BẮT BUỘC dùng nó để xác định phạm vi. Nếu Header nói về một mảng hoàn toàn khác với câu hỏi (VD: Hỏi "giá tiền" nhưng Header là "Chức năng nhiệm vụ"), lập tức trả về "nope".
         - Chỉ trả về "document" nếu:
-          • Document base có dữ liệu TRỰC TIẾP để trả lời
-          • Không suy diễn
+          • Nội dung Document Base (context) có dữ liệu TRỰC TIẾP để trả lời
           • Không trả lời chung chung
           • Không chỉ dựa vào trùng từ khóa
         - Chỉ trả về "document" nếu NỘI DUNG của document base THỰC SỰ có thông tin trả lời câu hỏi và thông tin đó đúng ý định của câu query của người dùng muốn biết
         - (Tự hỏi: Context có thực sự chứa câu trả lời cho câu truy vấn của người dùng không? Nếu có -> "document").
+        
         - Check qua tầng 2 nếu:
             • chỉ trùng từ khóa nhưng không cùng ý nghĩa
             • document không chứa dữ liệu cần thiết để trả lời
@@ -407,7 +409,7 @@ class TrainingService:
         self, enriched_query: str, context: str
     ) -> bool:
         prompt = f"""
-        Bạn là hệ thống kiểm tra mức độ liên quan giữa câu hỏi người dùng có liên quan đến các nội dung tư vấn ngành học hay tư vấn cho cá nhân dựa theo hồ sơ của học sinh hoặc những câu liên quan đến RIASEC, học bạ, GPA, sở thích, nguyện vọng cá nhân; hoặc yêu cầu so sánh ngành theo profile; hoặc yêu cầu gợi ý ngành phù hợp cho chatbot RAG tư vấn tuyển sinh.
+        Bạn là hệ thống kiểm tra mức độ liên quan giữa câu hỏi người dùng có liên quan đến các nội dung tư vấn ngành học hay tư vấn cho cá nhân dựa theo hồ sơ của học sinh hoặc những câu liên quan đến RIASEC, học bạ, GPA, sở thích, nguyện vọng cá nhân; hoặc yêu cầu so sánh ngành theo profile; hoặc yêu cầu gợi ý ngành phù hợp cho chatbot RAG tư vấn tuyển sinh của trường {self.university_name}.
 
         Yêu cầu:
         - Chỉ trả về "true" nếu câu hỏi có liên quan đến các nội dung đó.
@@ -573,10 +575,12 @@ class TrainingService:
             Không được:
                 - Lặp lại ý người dùng
                 - Dùng ngôn ngữ AI máy móc, robot
+                - TUYỆT ĐỐI KHÔNG ĐƯỢC LẤP LIẾM, TỰ GÁN THÔNG TIN
             Cách phản hồi:
                 - Trả lời trực tiếp câu hỏi
                 - Nếu cần, hướng dẫn từng bước
                 - Gợi ý thông tin liên quan hữu ích
+                - Nếu có đường dẫn liên quan đến nội dung người dùng muốn biết, có thể gợi ý để họ tự tìm hiểu thêm, TUYỆT ĐỐI không được lấy đường dẫn không liên quan đến nội dung trả lời
             === HƯỚNG DẪN ===
             - Dựa vào thông tin tham khảo trên được cung cấp
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
@@ -591,6 +595,10 @@ class TrainingService:
             - Hãy phân biệt rõ thực thể 'Trường' (toàn trường/cơ sở chính) và 'Phân hiệu tại TP.HCM/UTC2", Nếu tài liệu chỉ nói chung về 'Trường' mà không chỉ đích danh 'Phân hiệu' thì KHÔNG ĐƯỢC tự ý gán đó là số liệu của Phân hiệu,
                 + Trong trường hợp người dùng hỏi về Phân hiệu nhưng tài liệu chỉ có số liệu của Toàn trường, bạn phải trả lời rõ ràng theo biểu mẫu sau: "Hiện tại tài liệu chưa có số liệu riêng của Phân hiệu vào mốc thời gian này, [Nếu có số liệu Phân hiệu ở mốc khác thì bổ sung thêm]".
             - Nếu câu hỏi chỉ là chào hỏi, hoặc các câu xã giao, hãy trả lời bằng lời chào thân thiện, giới thiệu về bản thân chatbot, KHÔNG kéo thêm thông tin chi tiết trong context.
+            - Năm của dữ liệu: lấy từ heading trong context (VD: "Đề án tuyển sinh 2026").
+    KHÔNG tự suy đoán hoặc copy năm từ câu hỏi của người dùng nếu context không xác nhận.
+            - Hệ đào tạo: đọc heading context để xác định đúng hệ (Chính quy, Vừa làm vừa học,
+    Liên thông, Từ xa...) rồi nêu rõ trong câu trả lời.
             - Cuối câu trả lời, nếu phù hợp, hãy gợi ý một chủ đề liên quan 
                 mà người dùng có thể quan tâm tiếp theo (điểm chuẩn, học bổng, 
                 chuyên ngành, học phí...). Thay đổi gợi ý theo ngữ cảnh câu hỏi, 
@@ -2412,7 +2420,7 @@ Yêu cầu:
                 "sources": list
             }
         """
-
+        confidence_score = float(os.getenv("CONFIDENCE_SCORE", 0.35))
         # STEP 1: Search training Q&A
         self._debug_log(f"hybrid_search: start query_len={len(query or '')}", trace_id)
 
@@ -2443,7 +2451,7 @@ Yêu cầu:
             self._debug_log("hybrid_search: qa_results=0", trace_id)
 
         # TIER 1: Perfect match (score > 0.7)
-        if qa_results and qa_results[0].score >= 0.35:
+        if qa_results and qa_results[0].score >= confidence_score:
             top_match = qa_results[0]
             self._debug_log("hybrid_search: tier=training_qa", trace_id)
             return {
