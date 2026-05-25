@@ -614,6 +614,9 @@ class TrainingService:
     KHÔNG tự suy đoán hoặc copy năm từ câu hỏi của người dùng nếu context không xác nhận.
             - Hệ đào tạo: đọc heading context để xác định đúng hệ (Chính quy, Vừa làm vừa học,
     Liên thông, Từ xa...) rồi nêu rõ trong câu trả lời.
+            - LƯU Ý QUAN TRỌNG: Phải phân biệt rõ ràng giữa số liệu của "Nhóm ngành" (tổng của nhiều ngành) và số liệu của một "Ngành" cụ thể. 
+            TUYỆT ĐỐI KHÔNG lấy chỉ tiêu tổng của cả một "Nhóm ngành" để gán cho một "Ngành" đơn lẻ.
+            Nếu người dùng hỏi 1 ngành cụ thể nhưng tài liệu chỉ có số liệu tổng của Nhóm ngành, bạn phải trả lời rõ: "Tài liệu hiện tại chỉ thống kê chỉ tiêu tổng của cả Nhóm ngành [Tên nhóm ngành] là [Số lượng], chưa có số liệu bóc tách chi tiết cho riêng ngành bạn hỏi."`
             - Cuối câu trả lời, nếu phù hợp, hãy gợi ý một chủ đề liên quan 
                 mà người dùng có thể quan tâm tiếp theo (điểm chuẩn, học bổng, 
                 chuyên ngành, học phí...). Thay đổi gợi ý theo ngữ cảnh câu hỏi, 
@@ -916,51 +919,52 @@ class TrainingService:
             mem_vars = memory.load_memory_variables({})
             chat_history = mem_vars.get("chat_history", "")
             suggestion = await self.cross_scope_search_score(
-                query, 3, query_embedding=query_embedding
+                query,
+                3,
+                query_embedding=query_embedding,
+                current_audience_id=current_audience_id,
+                current_intent_id=current_intent_id,
             )
             print("Suggestion raw:", suggestion)
             if suggestion:
-                if (
-                    suggestion["audience_ids"] == current_audience_id
-                    and suggestion["intent_id"] == current_intent_id
-                ):
+                audience_ids = suggestion.get("audience_ids") or []
+                audience_names = suggestion.get("audience_names") or []
+                if not isinstance(audience_ids, list):
+                    audience_ids = [audience_ids]
+                    audience_names = [audience_names]
+                # Chỉ giữ suggestion nếu nó trỏ tới ít nhất 1 audience KHÁC current
+                has_other_audience = any(
+                    aid != current_audience_id for aid in audience_ids
+                )
+                if not has_other_audience:
                     suggestion = None
-
+            if suggestion:
+                filtered = [
+                    name
+                    for aid, name in zip(audience_ids, audience_names)
+                    if aid != current_audience_id
+                ]
+                display_audience_names = filtered if filtered else audience_names
             # ===== BUILD RESPONSE (KHÔNG DÙNG LLM nếu có suggestion) =====
             if suggestion:
-                if suggestion["source"] == "training_qa":
-
-                    response_text = (
-                        f"## Không tìm thấy thông tin trong mục hiện tại.\n\n"
-                        f"Mình đã kiểm tra trong phạm vi **đối tượng** và **lĩnh vực** bạn đang chọn, "
-                        f"nhưng hiện tại hệ thống chưa có dữ liệu phù hợp để trả lời chính xác câu hỏi này.\n\n"
-                        f"Gợi ý nội dung liên quan:\n\n"
-                        f"Mình phát hiện câu hỏi của bạn có thể thuộc phạm vi khác trong hệ thống:\n\n"
-                        f"- **Đối tượng phù hợp**: {suggestion['audience_names']}\n"
-                        f"- **Lĩnh vực liên quan**: {suggestion['intent_name']}\n\n"
-                        f"Bạn có thể làm gì tiếp theo?\n\n"
-                        f"- **Chuyển sang đúng đối tượng / lĩnh vực** để xem thông tin chính xác hơn\n"
-                        f"- Tiếp tục đặt câu hỏi chi tiết hơn (ví dụ: nội dung cụ thể bạn muốn biết)\n"
-                        f"- Nếu cần hỗ trợ sâu hơn, bạn có thể liên hệ trực tiếp bộ phận tư vấn của trường\n"
-                    )
-                else:
-                    preview = suggestion.get("chunk_preview", "")[:200]
-
-                    response_text = (
-                        f"## Không tìm thấy thông tin trong mục hiện tại.\n"
-                        f"Mình đã kiểm tra trong phạm vi **đối tượng** và **lĩnh vực** bạn đang chọn, "
-                        f"nhưng hiện tại hệ thống chưa có dữ liệu phù hợp để trả lời chính xác câu hỏi này.\n\n"
-                        f"Gợi ý nội dung liên quan.\n\n"
-                        f"Mình phát hiện câu hỏi của bạn có thể thuộc phạm vi khác trong hệ thống:\n"
-                        f"- **Đối tượng phù hợp**: {suggestion['audience_names']}\n"
-                        f"- **Lĩnh vực liên quan**: {suggestion['intent_name']}\n\n"
-                        f"Nội dung gần đúng:\n"
-                        f'"{preview}..."\n\n'
-                        f"## Bạn có thể làm gì tiếp theo?\n\n"
-                        f"- **Chuyển sang đúng đối tượng / lĩnh vực** để xem thông tin chính xác hơn\n"
-                        f"- Tiếp tục đặt câu hỏi chi tiết hơn (ví dụ: nội dung cụ thể bạn muốn biết)\n"
-                        f"- Nếu cần hỗ trợ sâu hơn, bạn có thể liên hệ trực tiếp bộ phận tư vấn của trường\n"
-                    )
+                intent_line = (
+                    f"- **Lĩnh vực liên quan**: {suggestion['intent_name']}\n\n"
+                    if suggestion.get("intent_name")
+                    and suggestion["intent_name"] != "None"
+                    else ""
+                )
+                response_text = (
+                    f"## Không tìm thấy thông tin trong mục hiện tại.\n\n"
+                    f"Mình đã kiểm tra trong phạm vi **đối tượng** và **lĩnh vực** bạn đang chọn, "
+                    f"nhưng hiện tại hệ thống chưa có dữ liệu phù hợp để trả lời chính xác câu hỏi này.\n\n"
+                    f"Mình phát hiện câu hỏi của bạn có thể thuộc phạm vi khác trong hệ thống:\n\n"
+                    f"- **Đối tượng phù hợp**: {display_audience_names}\n"
+                    f"{intent_line}"
+                    f"## Bạn có thể làm gì tiếp theo?\n\n"
+                    f"- **Chuyển sang đúng đối tượng / lĩnh vực** để xem thông tin chính xác hơn\n"
+                    f"- Tiếp tục đặt câu hỏi chi tiết hơn\n"
+                    f"- Nếu cần hỗ trợ sâu hơn, bạn có thể liên hệ trực tiếp bộ phận tư vấn của trường\n"
+                )
 
                 # for line in response_text.splitlines(keepends=True):
                 #     yield line
@@ -982,7 +986,27 @@ class TrainingService:
 
                 === CÂU HỎI NGƯỜI DÙNG ===
                 {query}
-
+                === PHONG CÁCH TRẢ LỜI ===
+                Cách trả lời:
+                    - ĐỐI VỚI DỮ LIỆU SỐ LƯỢNG/CHỈ TIÊU: BẮT BUỘC trình bày dưới dạng danh sách gạch đầu dòng (bullet points) thật gọn gàng, dễ nhìn.
+                    - TUYỆT ĐỐI KHÔNG in ra định dạng bảng chứa các ký tự "|".
+                    - Bắt buộc phải rà soát từ trên xuống dưới và LIỆT KÊ ĐẦY ĐỦ tất cả các ngành có trong ngữ cảnh. TUYỆT ĐỐI KHÔNG được tự ý tóm tắt, gom nhóm hay bỏ sót bất kỳ ngành nào.
+                    - Nếu có nhiều phần (Chính quy, Chất lượng cao, Từ xa...), hãy dùng tiêu đề (Heading 2 hoặc 3) để phân chia rõ ràng trước khi gạch đầu dòng.
+                    - Dễ hiểu
+                    - Thân thiện
+                    - Trả lời bằng tiếng Việt
+                    - Dùng ngôn ngữ đời thường
+                    - Dùng Markdown linh hoạt: chỉ dùng tiêu đề ## và gạch đầu dòng khi câu trả lời có nhiều mục rõ ràng. Câu trả lời ngắn thì viết thành đoạn văn tự nhiên, không cần chia heading.
+                    - Nếu trong câu trả lời có đường dẫn thì hãy markdown đường dẫn
+                Không được:
+                    - Lặp lại ý người dùng
+                    - Dùng ngôn ngữ AI máy móc, robot
+                    - TUYỆT ĐỐI KHÔNG ĐƯỢC LẤP LIẾM, TỰ GÁN THÔNG TIN
+                Cách phản hồi:
+                    - Trả lời trực tiếp câu hỏi
+                    - Nếu cần, hướng dẫn từng bước
+                    - Gợi ý thông tin liên quan hữu ích
+                    - Nếu có đường dẫn liên quan đến nội dung người dùng muốn biết, có thể gợi ý để họ tự tìm hiểu thêm, TUYỆT ĐỐI không được lấy đường dẫn không liên quan đến nội dung trả lời
                 === HƯỚNG DẪN TRẢ LỜI ===
                 Bạn là tầng phản hồi của chatbot tra cứu thông tin {current_audience_id} của mục {current_intent_id} của trường {self.university_name}.
 
@@ -1901,7 +1925,12 @@ class TrainingService:
         return None
 
     async def cross_scope_search_score(
-        self, query: str, top_k: int = 3, query_embedding: Optional[List[float]] = None
+        self,
+        query: str,
+        top_k: int = 3,
+        query_embedding: Optional[List[float]] = None,
+        current_audience_id: int = None,
+        current_intent_id: int = None,
     ):
         # Biến đổi câu hỏi thành vector
         if query_embedding is None:
@@ -1946,11 +1975,38 @@ class TrainingService:
                     "vector_score": hit.score,
                 }
             )
-
+        print("=== CANDIDATES BEFORE FILTER ===")
+        for c in candidates:
+            print(
+                {
+                    "source": c["source"],
+                    "audience_ids": c["payload"].get("audience_ids"),
+                    "intent_id": c["payload"].get("intent_id"),
+                    "vector_score": c["vector_score"],
+                    "text_preview": c["text"][:80],
+                }
+            )
+        print(
+            f"current_audience_id={current_audience_id}, current_intent_id={current_intent_id}"
+        )
+        print("=== CANDIDATES AFTER FILTER ===")
         # Nếu không có ứng viên nào vượt qua ngưỡng 0.3 của vector, dừng luôn
         if not candidates:
             return None
 
+        def is_same_scope(payload):
+            doc_audience_ids = payload.get("audience_ids") or []
+            if not isinstance(doc_audience_ids, list):
+                doc_audience_ids = [doc_audience_ids]
+
+            if current_audience_id in doc_audience_ids:
+                return True  # Cùng audience nhưng khác intent → GIỮ LẠI
+
+            return False  # Hoàn toàn cùng scope → LOẠI
+
+        candidates = [c for c in candidates if not is_same_scope(c["payload"])]
+        if not candidates:
+            return None
         # ===== 2. CROSS-ENCODER RE-RANKING =====
         # Tạo danh sách các cặp: [[Câu hỏi, Text ứng viên 1], [Câu hỏi, Text ứng viên 2], ...]
         sentence_pairs = [[query, cand["text"]] for cand in candidates]
@@ -1971,9 +2027,18 @@ class TrainingService:
         # LƯU Ý VỀ ĐIỂM SỐ CỦA BGE-RERANKER:
         # Điểm trả về không phải từ 0-1 mà là Logit (thường chạy từ -10 đến 10).
         # Điểm > 0 thường là có liên quan, điểm âm (< 0) là không liên quan.
-        print(f"👉 Điểm Rerank cao nhất đang là: {best_match['rerank_score']}")
-        print(f"👉 Text đang xét: {best_match['text']}")
+        print(f" Điểm Rerank cao nhất đang là: {best_match['rerank_score']}")
+        print(f" Text đang xét: {best_match['text']}")
         cross_score = float(os.getenv("CROSS_ENCODER_SCORE", 0.6))
+        for c in candidates:
+            print(
+                {
+                    "source": c["source"],
+                    "audience_ids": c["payload"].get("audience_ids"),
+                    "intent_id": c["payload"].get("intent_id"),
+                    "rerank_score": c.get("rerank_score"),
+                }
+            )
         if best_match["rerank_score"] >= cross_score:
             payload = best_match["payload"]
 
