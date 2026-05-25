@@ -1132,10 +1132,10 @@ def api_approve_document(
             try:
                 chunks, use_header_split = service._extract_and_chunk(bdoc, ext)
                 # In ra để xem chunk thực tế có to như cấu hình không
-                print(f"🔥 DEBUG CHUNKING: Tổng số {len(chunks)} chunks được tạo.")
+                print(f"DEBUG CHUNKING: Tổng số {len(chunks)} chunks được tạo.")
                 if chunks:
                     print(
-                        f"🔥 DEBUG CHUNKING: Độ dài chunk đầu tiên: {len(chunks[0])} ký tự."
+                        f"DEBUG CHUNKING: Độ dài chunk đầu tiên: {len(chunks[0])} ký tự."
                     )
             except Exception as e:
                 btask.status = "failed"

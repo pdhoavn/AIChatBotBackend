@@ -2133,19 +2133,17 @@ class TrainingService:
 
             # # Cắt lấy top_k tốt nhất
             # final_results = reranked_results[:15]
-            # elapsed_ms = int((time.perf_counter() - start) * 1000)
-            # top_score = (
-            #     float(getattr(final_results[0], "score", 0.0)) if final_results else 0.0
-            # )
-            # top_payload = (
-            #     getattr(final_results[0], "payload", {}) if final_results else {}
-            # )
-            # top_document_id = (top_payload or {}).get("document_id")
-            # self._debug_log(
-            #     f"{stage}: success results={len(final_results)} top_score={top_score:.6f} "
-            #     f"top_document_id={top_document_id} elapsed_ms={elapsed_ms}",
-            #     trace_id,
-            # )
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            top_score = (
+                float(getattr(raw_results[0], "score", 0.0)) if raw_results else 0.0
+            )
+            top_payload = getattr(raw_results[0], "payload", {}) if raw_results else {}
+            top_document_id = (top_payload or {}).get("document_id")
+            self._debug_log(
+                f"{stage}: success results={len(raw_results)} top_score={top_score:.6f} "
+                f"top_document_id={top_document_id} elapsed_ms={elapsed_ms}",
+                trace_id,
+            )
             return raw_results
         except Exception as e:
             elapsed_ms = int((time.perf_counter() - start) * 1000)
