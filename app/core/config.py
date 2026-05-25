@@ -38,11 +38,14 @@ class Settings(BaseSettings):
     FACEBOOK_PAGE_ACCESS_TOKEN: str
     FACEBOOK_VERIFY_TOKEN: str = "messenger_webhook_verify_token"
     API_VSMARTOFFICE: str
+    
+    # External OCR API Key
+    EXTERNAL_OCR_API_KEY: str = "default_external_ocr_api_key_123456"
 
     class Config:
         env_file = ".env"
         case_sensitive = True
-        extra = "forbid"  # Có thể đổi thành "ignore" nếu muốn bỏ qua biến dư
+        extra = "ignore"  # Changed from forbid to ignore to avoid crashes on undocumented vars
 
 
 settings = Settings()
