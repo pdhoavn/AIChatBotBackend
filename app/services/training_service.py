@@ -42,7 +42,7 @@ from app.utils.document_processor import DocumentProcessor
 memory_service = MemoryManager()
 load_dotenv()
 print("Đang nạp mô hình Reranker lên RAM, vui lòng đợi vài giây...")
-RERANKER_MODEL = CrossEncoder("BAAI/bge-reranker-v2-m3")
+RERANKER_MODEL = CrossEncoder("BAAI/bge-reranker-base", max_length=512)
 print("Nạp mô hình thành công! Server sẵn sàng.")
 
 
@@ -373,15 +373,25 @@ class TrainingService:
         • TUYỆT ĐỐI Không được suy diễn
         • TRƯỜNG HỢP CÓ TIÊU ĐỀ: Nếu tài liệu có chứa Tiêu đề/Header (thường nằm trong [...] hoặc bắt đầu bằng #), BẮT BUỘC dùng nó để xác định phạm vi. Nếu Header nói về một mảng hoàn toàn khác với câu hỏi (VD: Hỏi "giá tiền" nhưng Header là "Chức năng nhiệm vụ"), lập tức trả về "nope".
         - Chỉ trả về "document" nếu:
-          • Nội dung Document Base (context) có dữ liệu TRỰC TIẾP để trả lời
+          • Nội dung Document Base (context) số liệu/dữ liệu/thông tin CỤ THỂ và TRỰC TIẾP để trả lời
           • Không trả lời chung chung
           • Không chỉ dựa vào trùng từ khóa
         - Chỉ trả về "document" nếu NỘI DUNG của document base THỰC SỰ có thông tin trả lời câu hỏi và thông tin đó đúng ý định của câu query của người dùng muốn biết
         - (Tự hỏi: Context có thực sự chứa câu trả lời cho câu truy vấn của người dùng không? Nếu có -> "document").
-        
+        - BÀI TEST BẮT BUỘC trước khi trả về "document":
+            Hỏi bản thân: "Nếu tôi copy-paste đoạn context này làm câu trả lời,
+            người dùng có nhận được đúng thông tin họ cần không?"
+            → Nếu CÓ → "document"
+            → Nếu KHÔNG (dù context có đề cập chủ đề) → kiểm tra tầng 2
+            Ví dụ SAI khi trả về "document":
+            
+            - Hỏi "học phí 2025" nhưng context chỉ có số liệu 2026 → SAI NĂM → "nope"
+            - Hỏi "chỉ tiêu ngành X" nhưng context có bảng chỉ tiêu ngành Y, Z → KHÔNG có ngành X → "nope"
         - Check qua tầng 2 nếu:
-            • chỉ trùng từ khóa nhưng không cùng ý nghĩa
+            • chỉ trùng từ khóa nhưng không cùng ý nghĩa và nội dung không liên quan
+            • Context chỉ đề cập đến chủ đề nhưng KHÔNG có câu trả lời cụ thể
             • document không chứa dữ liệu cần thiết để trả lời
+            • Context nói về chính sách/quy trình nhưng không có con số/thông tin cần hỏi
             • truy vấn là yêu cầu tư vấn cá nhân (Recommendation), không phải tìm kiến thức
             • query chung chung như: "tôi hợp ngành nào", "hãy tư vấn", "mô tả về tôi", "nên học gì"
             • context không cung cấp thông tin trực tiếp liên quan
@@ -566,6 +576,10 @@ class TrainingService:
             {query}
             === PHONG CÁCH TRẢ LỜI ===
             Cách trả lời:
+                - ĐỐI VỚI DỮ LIỆU SỐ LƯỢNG/CHỈ TIÊU: BẮT BUỘC trình bày dưới dạng danh sách gạch đầu dòng (bullet points) thật gọn gàng, dễ nhìn.
+                - TUYỆT ĐỐI KHÔNG in ra định dạng bảng chứa các ký tự "|".
+                - Bắt buộc phải rà soát từ trên xuống dưới và LIỆT KÊ ĐẦY ĐỦ tất cả các ngành có trong ngữ cảnh. TUYỆT ĐỐI KHÔNG được tự ý tóm tắt, gom nhóm hay bỏ sót bất kỳ ngành nào.
+                - Nếu có nhiều phần (Chính quy, Chất lượng cao, Từ xa...), hãy dùng tiêu đề (Heading 2 hoặc 3) để phân chia rõ ràng trước khi gạch đầu dòng.
                 - Dễ hiểu
                 - Thân thiện
                 - Trả lời bằng tiếng Việt
@@ -587,6 +601,7 @@ class TrainingService:
             - Bạn là chatbot tra cứu thông tin chuyên nghiệp của {self.university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác hay phân hiệu khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
             - Nếu không tìm thấy thông tin → Nói rõ hệ thống chưa có dữ liệu, →  Có thể chọn đường dẫn chọn phù hợp từ context để gợi ý
             chỉ khi đường dẫn đó TRỰC TIẾP xử lý đúng vấn đề được hỏi.
+            - KHI NGƯỜI DÙNG YÊU CẦU LIỆT KÊ SỐ LƯỢNG / CHỈ TIÊU CÁC NGÀNH: Bạn bắt buộc phải rà soát toàn bộ bảng trong tài liệu và liệt kê ĐẦY ĐỦ TẤT CẢ các ngành. TUYỆT ĐỐI KHÔNG ĐƯỢC BỎ SÓT, KHÔNG ĐƯỢC TỰ Ý TÓM TẮT BỚT NGÀNH. Hãy đọc từ trên xuống dưới một cách cẩn thận.
             - Không cần nhắc lại CÂU HỎI của người dùng
             - Khi trả lời về một đơn vị/phòng ban cụ thể, CHỈ sử dụng thông tin
                 từ chunk có heading KHỚP CHÍNH XÁC với tên đơn vị được hỏi.
@@ -1347,7 +1362,7 @@ class TrainingService:
             )
         # --- Split text ---
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000, chunk_overlap=200
+            chunk_size=12000, chunk_overlap=1000
         )
         chunks = text_splitter.split_text(content)
 
@@ -1482,7 +1497,7 @@ class TrainingService:
 
             # --- Split + embed chunks ---
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000, chunk_overlap=200
+                chunk_size=12000, chunk_overlap=1000
             )
             chunks = text_splitter.split_text(content)
             total = len(chunks)
@@ -1558,7 +1573,7 @@ class TrainingService:
         """
 
         char_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1500, chunk_overlap=200
+            chunk_size=12000, chunk_overlap=1000
         )
         header_splitter = MarkdownHeaderTextSplitter(
             headers_to_split_on=[("#", "h1"), ("##", "h2"), ("###", "h3")],
@@ -1721,8 +1736,8 @@ class TrainingService:
         self, document_id: int, content: str, intend_id: int, metadata: dict = None
     ):
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,  # Size optimal cho Vietnamese
-            chunk_overlap=200,  # Overlap to preserve context
+            chunk_size=12000,  # Size optimal cho Vietnamese
+            chunk_overlap=1000,  # Overlap to preserve context
         )
         chunks = text_splitter.split_text(content)
 
@@ -1941,7 +1956,7 @@ class TrainingService:
         sentence_pairs = [[query, cand["text"]] for cand in candidates]
 
         # Model chấm điểm đồng loạt
-        rerank_scores = RERANKER_MODEL.predict(sentence_pairs)
+        rerank_scores = RERANKER_MODEL.predict(sentence_pairs, batch_size=16)
 
         # Cập nhật điểm mới vào mảng candidates
         for i, cand in enumerate(candidates):
@@ -2084,28 +2099,54 @@ class TrainingService:
             f"{stage}: start search_documents top_k={top_k} query_len={len(query or '')}",
             trace_id,
         )
-
+        # STAGE 1: DENSE RETRIEVAL (Vector Search)
         try:
             if query_embedding is None:
                 query_embedding = await self.embeddings.aembed_query(query)
 
-            results = await self.async_qdrant_client.search(
+            raw_results = await self.async_qdrant_client.search(
                 collection_name=self.documents_collection,
                 query_vector=query_embedding,
                 limit=top_k,
                 query_filter={"must": must_conditions},
             )
 
-            elapsed_ms = int((time.perf_counter() - start) * 1000)
-            top_score = float(getattr(results[0], "score", 0.0)) if results else 0.0
-            top_payload = getattr(results[0], "payload", {}) if results else {}
-            top_document_id = (top_payload or {}).get("document_id")
-            self._debug_log(
-                f"{stage}: success results={len(results)} top_score={top_score:.6f} "
-                f"top_document_id={top_document_id} elapsed_ms={elapsed_ms}",
-                trace_id,
-            )
-            return results
+            if not raw_results:
+                return []
+            # # STAGE 2: RERANKING
+
+            # pairs = []
+            # for hit in raw_results:
+
+            #     chunk_text = hit.payload.get("chunk_text", "")
+            #     pairs.append((query, chunk_text))
+
+            # # Chạy Reranker. CrossEncoder.predict() là hàm đồng bộ (sync),
+            # # dùng asyncio.to_thread để tránh block async event loop.
+            # rerank_scores = await asyncio.to_thread(
+            #     RERANKER_MODEL.predict, pairs, batch_size=16
+            # )
+            # # Ghi đè điểm vector bằng điểm Reranker và sắp xếp giảm dần
+            # for i, hit in enumerate(raw_results):
+            #     hit.score = float(rerank_scores[i])
+            # reranked_results = sorted(raw_results, key=lambda x: x.score, reverse=True)
+
+            # # Cắt lấy top_k tốt nhất
+            # final_results = reranked_results[:15]
+            # elapsed_ms = int((time.perf_counter() - start) * 1000)
+            # top_score = (
+            #     float(getattr(final_results[0], "score", 0.0)) if final_results else 0.0
+            # )
+            # top_payload = (
+            #     getattr(final_results[0], "payload", {}) if final_results else {}
+            # )
+            # top_document_id = (top_payload or {}).get("document_id")
+            # self._debug_log(
+            #     f"{stage}: success results={len(final_results)} top_score={top_score:.6f} "
+            #     f"top_document_id={top_document_id} elapsed_ms={elapsed_ms}",
+            #     trace_id,
+            # )
+            return raw_results
         except Exception as e:
             elapsed_ms = int((time.perf_counter() - start) * 1000)
             self._debug_log(
