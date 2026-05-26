@@ -361,15 +361,12 @@ class TrainingService:
         self, enriched_query: str, context: str
     ) -> bool:
         prompt = f"""
-        Bạn là hệ thống kiểm tra 2 tầng:
-        - Tầng 1 là hệ thống kiểm tra mức độ liên quan giữa câu hỏi người dùng và nội dung trong Document Base (RAG) cho chatbot RAG tư vấn tuyển sinh của trường {self.university_name}.
-        - Tầng 2 là hệ thống kiểm tra mức độ liên quan giữa câu hỏi người dùng có liên quan đến các nội dung tư vấn ngành học hay tư vấn cho cá nhân dựa theo hồ sơ của học sinh hoặc những câu liên quan đến RIASEC, học bạ, GPA, sở thích, nguyện vọng cá nhân; hoặc yêu cầu so sánh ngành theo profile; hoặc yêu cầu gợi ý ngành phù hợp cho chatbot RAG tư vấn tuyển sinh.
+        Bạn là hệ thống kiểm tra
+        - Là hệ thống kiểm tra mức độ liên quan giữa câu hỏi người dùng và nội dung trong Document Base (RAG) cho chatbot RAG tư vấn tuyển sinh của trường {self.university_name}.
         Yêu cầu kiểm tra câu hỏi người dùng có phù hợp với tầng 1 hoặc tầng 2:
-        - Nếu phù hợp với tầng 1 thì trả về duy nhất 1 từ "document"
-        - Nếu phù hợp với tầng 2 thì trả về duy nhất 1 từ "recommendation"
-        - Nếu tầng 1 phù hợp thì không cần check đến tầng 2
-        - Nếu không phù hợp với tầng 1 và tầng 2 thì trả về duy nhất 1 từ "Nope"
-        - Check tầng 1(document) đầu tiên:
+        - Nếu phù hợp thì trả về duy nhất 1 từ "document"
+        - Nếu không phù hợp thì trả về duy nhất 1 từ "Nope"
+        - Check(document):
         • TUYỆT ĐỐI Không được suy diễn
         • TRƯỜNG HỢP CÓ TIÊU ĐỀ: Nếu tài liệu có chứa Tiêu đề/Header (thường nằm trong [...] hoặc bắt đầu bằng #), BẮT BUỘC dùng nó để xác định phạm vi. Nếu Header nói về một mảng hoàn toàn khác với câu hỏi (VD: Hỏi "giá tiền" nhưng Header là "Chức năng nhiệm vụ"), lập tức trả về "nope".
         - Chỉ trả về "document" nếu:
@@ -384,10 +381,9 @@ class TrainingService:
             → Nếu CÓ → "document"
             → Nếu KHÔNG (dù context có đề cập chủ đề) → kiểm tra tầng 2
             Ví dụ SAI khi trả về "document":
-            
             - Hỏi "học phí 2025" nhưng context chỉ có số liệu 2026 → SAI NĂM → "nope"
             - Hỏi "chỉ tiêu ngành X" nhưng context có bảng chỉ tiêu ngành Y, Z → KHÔNG có ngành X → "nope"
-        - Check qua tầng 2 nếu:
+        - Chuyển qua "nope" nếu:
             • chỉ trùng từ khóa nhưng không cùng ý nghĩa và nội dung không liên quan
             • Context chỉ đề cập đến chủ đề nhưng KHÔNG có câu trả lời cụ thể
             • document không chứa dữ liệu cần thiết để trả lời
@@ -395,10 +391,6 @@ class TrainingService:
             • truy vấn là yêu cầu tư vấn cá nhân (Recommendation), không phải tìm kiến thức
             • query chung chung như: "tôi hợp ngành nào", "hãy tư vấn", "mô tả về tôi", "nên học gì"
             • context không cung cấp thông tin trực tiếp liên quan
-        - Check tầng 2(recommendation):
-        - Chỉ trả về "recommendation" nếu câu hỏi người dùng liên quan đến các nội dung tư vấn ngành học hay tư vấn cho cá nhân dựa theo hồ sơ của học sinh hoặc những câu liên quan đến RIASEC, học bạ, GPA, sở thích, năng lực, trình độ, học lực, nguyện vọng cá nhân; hoặc yêu cầu so sánh ngành theo profile; hoặc yêu cầu gợi ý ngành phù hợp. Và các câu hỏi đề cập đến năng lực tự đánh giá của người học (ví dụ: học lực yếu, trung bình, kém môn nào, không có năng khiếu, sợ không theo kịp, lo lắng về khả năng học) thì vẫn được coi là tư vấn cá nhân, kể cả khi không có GPA hoặc hồ sơ chi tiết. Nếu câu hỏi thể hiện nhu cầu được tư vấn định hướng cho cá nhân nhưng thiếu thông tin chi tiết, vẫn trả về "recommendation" để chatbot hỏi thêm thông tin.
-        - Chỉ trả về "Nope" khi cả tầng 1 và tầng 2 đều không liên quan đến câu hỏi người dùng.
-        
         Câu hỏi người dùng: "{enriched_query}"
 
         Nội dung Document Base (context):
@@ -534,9 +526,14 @@ class TrainingService:
         user_id: int,
         intent_id: int,
         message: str,
+        query_embedding: Optional[List[float]] = None,
+        current_audience_id: int = None,
+        current_intent_id: int = None,
+        confidence: float = 5.0,
     ):
+        print("vào doc stream")
         db = SessionLocal()
-
+        suggestion_threshold = float(os.getenv("CONFIDENCE_SCORE", 0.35))
         try:
             if not user_id:
                 # 🧩 1. Lưu tin nhắn người dùng
@@ -566,68 +563,199 @@ class TrainingService:
             memory = memory_service.get_memory(session_id)
             mem_vars = memory.load_memory_variables({})
             chat_history = mem_vars.get("chat_history", "")
-            print(f"Context: {context}")
-            prompt = f"""Bạn là một chatbot tra cứu thông tin chuyên nghiệp của trường {self.university_name}
-            Đây là đoạn hội thoại trước: 
-            {chat_history}
-            === THÔNG TIN THAM KHẢO ===
-            {context}
-            === CÂU HỎI ===
-            {query}
-            === PHONG CÁCH TRẢ LỜI ===
-            Cách trả lời:
-                - ĐỐI VỚI DỮ LIỆU SỐ LƯỢNG/CHỈ TIÊU: BẮT BUỘC trình bày dưới dạng danh sách gạch đầu dòng (bullet points) thật gọn gàng, dễ nhìn.
-                - TUYỆT ĐỐI KHÔNG in ra định dạng bảng chứa các ký tự "|".
-                - Bắt buộc phải rà soát từ trên xuống dưới và LIỆT KÊ ĐẦY ĐỦ tất cả các ngành có trong ngữ cảnh. TUYỆT ĐỐI KHÔNG được tự ý tóm tắt, gom nhóm hay bỏ sót bất kỳ ngành nào.
-                - Nếu có nhiều phần (Chính quy, Chất lượng cao, Từ xa...), hãy dùng tiêu đề (Heading 2 hoặc 3) để phân chia rõ ràng trước khi gạch đầu dòng.
-                - Dễ hiểu
-                - Thân thiện
-                - Trả lời bằng tiếng Việt
-                - Dùng ngôn ngữ đời thường
-                - Dùng Markdown linh hoạt: chỉ dùng tiêu đề ## và gạch đầu dòng khi câu trả lời có nhiều mục rõ ràng. Câu trả lời ngắn thì viết thành đoạn văn tự nhiên, không cần chia heading.
-                - Nếu trong câu trả lời có đường dẫn thì hãy markdown đường dẫn
-            Không được:
-                - Lặp lại ý người dùng
-                - Dùng ngôn ngữ AI máy móc, robot
-                - TUYỆT ĐỐI KHÔNG ĐƯỢC LẤP LIẾM, TỰ GÁN THÔNG TIN
-            Cách phản hồi:
-                - Trả lời trực tiếp câu hỏi
-                - Nếu cần, hướng dẫn từng bước
-                - Gợi ý thông tin liên quan hữu ích
-                - Nếu có đường dẫn liên quan đến nội dung người dùng muốn biết, có thể gợi ý để họ tự tìm hiểu thêm, TUYỆT ĐỐI không được lấy đường dẫn không liên quan đến nội dung trả lời
-            === HƯỚNG DẪN ===
-            - Dựa vào thông tin tham khảo trên được cung cấp
-            - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
-            - Bạn là chatbot tra cứu thông tin chuyên nghiệp của {self.university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác hay phân hiệu khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
-            - Nếu không tìm thấy thông tin → Nói rõ hệ thống chưa có dữ liệu, →  Có thể chọn đường dẫn chọn phù hợp từ context để gợi ý
-            chỉ khi đường dẫn đó TRỰC TIẾP xử lý đúng vấn đề được hỏi.
-            - KHI NGƯỜI DÙNG YÊU CẦU LIỆT KÊ SỐ LƯỢNG / CHỈ TIÊU CÁC NGÀNH: Bạn bắt buộc phải rà soát toàn bộ bảng trong tài liệu và liệt kê ĐẦY ĐỦ TẤT CẢ các ngành. TUYỆT ĐỐI KHÔNG ĐƯỢC BỎ SÓT, KHÔNG ĐƯỢC TỰ Ý TÓM TẮT BỚT NGÀNH. Hãy đọc từ trên xuống dưới một cách cẩn thận.
-            - Không cần nhắc lại CÂU HỎI của người dùng
-            - Khi trả lời về một đơn vị/phòng ban cụ thể, CHỈ sử dụng thông tin
-                từ chunk có heading KHỚP CHÍNH XÁC với tên đơn vị được hỏi.
-                KHÔNG lấy thông tin (website, email, SĐT) từ chunk của đơn vị khác
-                dù tên có vẻ tương tự.
-            - Hãy phân biệt rõ thực thể 'Trường' (toàn trường/cơ sở chính) và 'Phân hiệu tại TP.HCM/UTC2", Nếu tài liệu chỉ nói chung về 'Trường' mà không chỉ đích danh 'Phân hiệu' thì KHÔNG ĐƯỢC tự ý gán đó là số liệu của Phân hiệu,
-                + Trong trường hợp người dùng hỏi về Phân hiệu nhưng tài liệu chỉ có số liệu của Toàn trường, bạn phải trả lời rõ ràng theo biểu mẫu sau: "Hiện tại tài liệu chưa có số liệu riêng của Phân hiệu vào mốc thời gian này, [Nếu có số liệu Phân hiệu ở mốc khác thì bổ sung thêm]".
-            - Nếu câu hỏi chỉ là chào hỏi, hoặc các câu xã giao, hãy trả lời bằng lời chào thân thiện, giới thiệu về bản thân chatbot, KHÔNG kéo thêm thông tin chi tiết trong context.
-            - Năm của dữ liệu: lấy từ heading trong context (VD: "Đề án tuyển sinh 2026").
-    KHÔNG tự suy đoán hoặc copy năm từ câu hỏi của người dùng nếu context không xác nhận.
-            - Hệ đào tạo: đọc heading context để xác định đúng hệ (Chính quy, Vừa làm vừa học,
-    Liên thông, Từ xa...) rồi nêu rõ trong câu trả lời.
-            - LƯU Ý QUAN TRỌNG: Phải phân biệt rõ ràng giữa số liệu của "Nhóm ngành" (tổng của nhiều ngành) và số liệu của một "Ngành" cụ thể. 
-            TUYỆT ĐỐI KHÔNG lấy chỉ tiêu tổng của cả một "Nhóm ngành" để gán cho một "Ngành" đơn lẻ.
-            Nếu người dùng hỏi 1 ngành cụ thể nhưng tài liệu chỉ có số liệu tổng của Nhóm ngành, bạn phải trả lời rõ: "Tài liệu hiện tại chỉ thống kê chỉ tiêu tổng của cả Nhóm ngành [Tên nhóm ngành] là [Số lượng], chưa có số liệu bóc tách chi tiết cho riêng ngành bạn hỏi."`
-            - Cuối câu trả lời, nếu phù hợp, hãy gợi ý một chủ đề liên quan 
-                mà người dùng có thể quan tâm tiếp theo (điểm chuẩn, học bổng, 
-                chuyên ngành, học phí...). Thay đổi gợi ý theo ngữ cảnh câu hỏi, 
-                không lặp lại cùng một câu mẫu.
-            """
             full_response = ""
-            async for chunk in self.llm.astream(prompt):
-                text = chunk.content or ""
-                full_response += text
-                yield text
-                await asyncio.sleep(0)  # Nhường event loop
+            suggestion = None
+            print(
+                f"DEBUG confidence={confidence} suggestion_threshold={suggestion_threshold}"
+            )
+            if confidence < suggestion_threshold:
+                print("→ checking cross_scope suggestion")
+                suggestion = await self.cross_scope_search_score(
+                    query,
+                    3,
+                    query_embedding=query_embedding,
+                    current_audience_id=current_audience_id,
+                    current_intent_id=current_intent_id,
+                )
+                print("Suggestion raw:", suggestion)
+                if suggestion:
+                    audience_ids = suggestion.get("audience_ids") or []
+                    audience_names = suggestion.get("audience_names") or []
+                    if not isinstance(audience_ids, list):
+                        audience_ids = [audience_ids]
+                        audience_names = [audience_names]
+
+                    has_other_audience = any(
+                        aid != current_audience_id for aid in audience_ids
+                    )
+                    if not has_other_audience:
+                        suggestion = None
+                if suggestion:
+                    filtered = [
+                        name
+                        for aid, name in zip(audience_ids, audience_names)
+                        if aid != current_audience_id
+                    ]
+                    display_audience_names = filtered if filtered else audience_names
+
+                    intent_line = (
+                        f"- **Lĩnh vực liên quan**: {suggestion['intent_name']}\n\n"
+                        if suggestion.get("intent_name")
+                        and suggestion["intent_name"] != "None"
+                        else ""
+                    )
+                    response_text = (
+                        f"## Không tìm thấy thông tin trong mục hiện tại.\n\n"
+                        f"Mình đã kiểm tra trong phạm vi **đối tượng** và **lĩnh vực** bạn đang chọn, "
+                        f"nhưng hiện tại hệ thống chưa có dữ liệu phù hợp để trả lời chính xác câu hỏi này.\n\n"
+                        f"Mình phát hiện câu hỏi của bạn có thể thuộc phạm vi khác trong hệ thống:\n\n"
+                        f"- **Đối tượng phù hợp**: {display_audience_names}\n"
+                        f"{intent_line}"
+                        f"## Bạn có thể làm gì tiếp theo?\n\n"
+                        f"- **Chuyển sang đúng đối tượng / lĩnh vực** để xem thông tin chính xác hơn\n"
+                        f"- Tiếp tục đặt câu hỏi chi tiết hơn\n"
+                        f"- Nếu cần hỗ trợ sâu hơn, bạn có thể liên hệ trực tiếp bộ phận tư vấn của trường\n"
+                    )
+
+                    full_response = response_text
+                    words = response_text.split(" ")
+                    for word in words:
+                        yield word + " "
+                        await asyncio.sleep(0.02)
+                else:
+                    print("XỬ lí không có thông tin trong tài liệu!!")
+                    prompt = f"""
+                    Bạn là chatbot tra cứu thông tin {current_audience_id} của mục {current_intent_id} của trường {self.university_name}.
+                    Đây là đoạn hội thoại trước: 
+                    {chat_history}
+                    === CÂU TRẢ LỜI CHÍNH THỨC ===
+                    {context}
+
+                    === CÂU HỎI NGƯỜI DÙNG ===
+                    {query}
+                    === PHONG CÁCH TRẢ LỜI ===
+                    Cách trả lời:
+                        - Dễ hiểu
+                        - Thân thiện
+                        - Trả lời bằng tiếng Việt
+                        - Dùng ngôn ngữ đời thường
+                        - Dùng Markdown linh hoạt: chỉ dùng tiêu đề ## và gạch đầu dòng khi câu trả lời có nhiều mục rõ ràng. Câu trả lời ngắn thì viết thành đoạn văn tự nhiên, không cần chia heading.
+                        - Nếu trong câu trả lời có đường dẫn thì hãy markdown đường dẫn
+                    Không được:
+                        - Lặp lại ý người dùng
+                        - Dùng ngôn ngữ AI máy móc, robot
+                        - TUYỆT ĐỐI KHÔNG ĐƯỢC LẤP LIẾM, TỰ GÁN THÔNG TIN
+                    Cách phản hồi:
+                        - Trả lời trực tiếp câu hỏi
+                        - Nếu cần, hướng dẫn từng bước
+                        - Gợi ý thông tin liên quan hữu ích
+                        - Nếu có đường dẫn liên quan đến nội dung người dùng muốn biết, có thể gợi ý để họ tự tìm hiểu thêm, TUYỆT ĐỐI không được lấy đường dẫn không liên quan đến nội dung trả lời
+                    === HƯỚNG DẪN TRẢ LỜI ===
+                    Bạn là tầng phản hồi của chatbot tra cứu thông tin {current_audience_id} của mục {current_intent_id} của trường {self.university_name}.
+
+                    Nhiệm vụ của bạn KHÔNG phải trả lời kiến thức,
+                    mà là xử lý tình huống, tự tạo câu phản hồi phù hợp với CÂU HỎI NGƯỜI DÙNG khi NGỮ CẢNH ĐƯỢC CUNG CẤP
+                    KHÔNG PHÙ HỢP hoặc CHƯA CÓ DATA với ý định câu hỏi người dùng.
+                    ## Hướng xử lý
+                    - Đưa ra cách giải quyết cụ thể (liên hệ phòng ban phù hợp hoặc kênh hỗ trợ chính thức)
+                    - Nếu có thể, gợi ý loại đơn vị cần liên hệ dựa theo trường đại học bạn đang tư vấn (ví dụ: Phòng Tổ chức Hành chính, Phòng Đào tạo...)
+                    === NGUYÊN TẮC BẮT BUỘC ===
+                    - TUYỆT ĐỐI không suy diễn thông tin từ ngữ cảnh.
+                    - TUYỆT ĐỐI không trả lời theo nội dung ngữ cảnh nếu không khớp rõ ràng.
+                    - Không bịa thông tin.
+                    - Không cố gắng “trả lời cho có”.
+                    - Nếu câu hỏi vẫn thuộc phạm vi tư vấn tuyển sinh nhưng thiếu thông tin, hãy lịch sự yêu cầu người dùng cung cấp thêm dữ liệu cần thiết(thay vì từ chối trả lời).
+
+                    === VIỆC BẠN PHẢI LÀM ===
+                    1. Nhận diện rằng nội dung hiện có KHÔNG trả lời đúng câu hỏi.
+                    2. Phản hồi một cách lịch sự, rõ ràng, không máy móc, tự nhiên như 1 tư vấn tuyển sinh
+                    3. Hướng người dùng đi đúng hướng tiếp theo.
+                    4. Có thể chào hỏi nếu người dùng gửi lời chào
+                    5. Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
+                    6. Giải thích rằng hệ thống hiện chưa có dữ liệu phù hợp 
+                    === PHONG CÁCH TRẢ LỜI ===
+                    - Thân thiện, tự nhiên, không máy móc
+                    - Không chào hỏi dài dòng
+                    - Trả lời theo định dạng Markdown: dùng tiêu đề ##, gạch đầu dòng -, xuống dòng rõ ràng.
+                    """
+                    full_response = ""
+                    async for chunk in self.llm.astream(prompt):
+                        text = chunk.content or ""
+                        full_response += text
+                        yield text
+                        await asyncio.sleep(0)  # Nhường event loop
+            else:
+                print("→ skipping suggestion, going to LLM directly")
+
+                prompt = f"""Bạn là một chatbot tra cứu thông tin chuyên nghiệp của trường {self.university_name}
+                Đây là đoạn hội thoại trước: 
+                {chat_history}
+                === THÔNG TIN THAM KHẢO ===
+                {context}
+                === CÂU HỎI ===
+                {query}
+                === PHONG CÁCH TRẢ LỜI ===
+                Cách trả lời:
+                    - ĐỐI VỚI DỮ LIỆU SỐ LƯỢNG/CHỈ TIÊU: BẮT BUỘC trình bày dưới dạng danh sách gạch đầu dòng (bullet points) thật gọn gàng, dễ nhìn.
+                    - TUYỆT ĐỐI KHÔNG in ra định dạng bảng chứa các ký tự "|".
+                    - Bắt buộc phải rà soát từ trên xuống dưới và LIỆT KÊ ĐẦY ĐỦ tất cả các ngành có trong ngữ cảnh. TUYỆT ĐỐI KHÔNG được tự ý tóm tắt, gom nhóm hay bỏ sót bất kỳ ngành nào.
+                    - Nếu có nhiều phần (Chính quy, Chất lượng cao, Từ xa...), hãy dùng tiêu đề (Heading 2 hoặc 3) để phân chia rõ ràng trước khi gạch đầu dòng.
+                    - Dễ hiểu
+                    - Thân thiện
+                    - Trả lời bằng tiếng Việt
+                    - Dùng ngôn ngữ đời thường
+                    - Dùng Markdown linh hoạt: chỉ dùng tiêu đề ## và gạch đầu dòng khi câu trả lời có nhiều mục rõ ràng. Câu trả lời ngắn thì viết thành đoạn văn tự nhiên, không cần chia heading.
+                    - Nếu trong câu trả lời có đường dẫn thì hãy markdown đường dẫn
+                Không được:
+                    - Lặp lại ý người dùng
+                    - Dùng ngôn ngữ AI máy móc, robot
+                    - TUYỆT ĐỐI KHÔNG ĐƯỢC LẤP LIẾM, TỰ GÁN THÔNG TIN
+                Cách phản hồi:
+                    - Trả lời trực tiếp câu hỏi
+                    - Nếu cần, hướng dẫn từng bước
+                    - Gợi ý thông tin liên quan hữu ích
+                    - Nếu có đường dẫn liên quan đến nội dung người dùng muốn biết, có thể gợi ý để họ tự tìm hiểu thêm, TUYỆT ĐỐI không được lấy đường dẫn không liên quan đến nội dung trả lời
+                === KỶ LUẬT THÉP (BẮT BUỘC TUÂN THỦ TÙY TÌNH HUỐNG) ===
+                1. CHỐNG BỊA ĐẶT ĐA HỆ ĐÀO TẠO: Ngành nào CÓ TÊN TRONG BẢNG CỦA HỆ NÀO thì mới được liệt kê vào hệ đào tạo đó. TUYỆT ĐỐI KHÔNG copy số liệu của hệ Chính quy xuống gán cho hệ khác. Nếu bảng của hệ đó không có tên ngành, BẮT BUỘC kết luận: "Tài liệu không có thông tin chỉ tiêu cho ngành này ở hệ [Tên hệ]."
+                2. PHÂN BIỆT NHÓM NGÀNH VÀ NGÀNH: TUYỆT ĐỐI KHÔNG lấy tổng chỉ tiêu của cả một "Nhóm ngành" để gán cho một "Ngành" đơn lẻ. Nếu chỉ có số liệu nhóm, trả lời: "Tài liệu hiện tại chỉ thống kê chỉ tiêu tổng của cả Nhóm ngành [Tên nhóm] là [Số lượng], chưa có số liệu tách riêng cho ngành này."
+                3. TÍNH CHÍNH XÁC CỦA ĐƠN VỊ: Khi trả lời về một đơn vị/phòng ban, CHỈ dùng thông tin từ chunk có tiêu đề khớp chính xác với đơn vị đó. Không lấy râu ông nọ cắm cằm bà kia.
+                === HƯỚNG DẪN XỬ LÝ LƯU Ý ===
+                - Dựa vào thông tin tham khảo trên được cung cấp
+                - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
+                - Bạn là chatbot tra cứu thông tin chuyên nghiệp của {self.university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác hay phân hiệu khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
+                - Nếu không tìm thấy thông tin → Nói rõ hệ thống chưa có dữ liệu, →  Có thể chọn đường dẫn chọn phù hợp từ context để gợi ý
+                chỉ khi đường dẫn đó TRỰC TIẾP xử lý đúng vấn đề được hỏi.
+                - KHI NGƯỜI DÙNG YÊU CẦU LIỆT KÊ SỐ LƯỢNG / CHỈ TIÊU CÁC NGÀNH: Bạn bắt buộc phải rà soát toàn bộ bảng trong tài liệu và liệt kê ĐẦY ĐỦ TẤT CẢ các ngành. TUYỆT ĐỐI KHÔNG ĐƯỢC BỎ SÓT, KHÔNG ĐƯỢC TỰ Ý TÓM TẮT BỚT NGÀNH. Hãy đọc từ trên xuống dưới một cách cẩn thận.
+                - XỬ LÝ TÌNH HUỐNG HỎI CHUNG CHUNG (AMBIGUITY): Nếu người dùng hỏi chung chung mà context có nhiều hệ đào tạo:
+                    + CHỈ liệt kê các hệ đào tạo MÀ CONTEXT CÓ DỮ LIỆU THỰC TẾ.
+                    + TUYỆT ĐỐI không tự suy ra hoặc thêm vào các hệ không có trong context.
+                    + KHÔNG liệt kê hệ với nội dung "không có thông tin" — nếu không có data thì bỏ qua hoàn toàn, không đề cập.
+                    + Mỗi mã xét tuyển chỉ được gán đúng 1 hệ duy nhất theo heading trong context.
+                - Khi trả lời về một đơn vị/phòng ban cụ thể, CHỈ sử dụng thông tin
+                    từ chunk có heading KHỚP CHÍNH XÁC với tên đơn vị được hỏi.
+                    KHÔNG lấy thông tin (website, email, SĐT) từ chunk của đơn vị khác
+                    dù tên có vẻ tương tự.
+                - Hãy phân biệt rõ thực thể 'Trường' (toàn trường/cơ sở chính) và 'Phân hiệu tại TP.HCM/UTC2", Nếu tài liệu chỉ nói chung về 'Trường' mà không chỉ đích danh 'Phân hiệu' thì KHÔNG ĐƯỢC tự ý gán đó là số liệu của Phân hiệu,
+                    + Trong trường hợp người dùng hỏi về Phân hiệu nhưng tài liệu chỉ có số liệu của Toàn trường, bạn phải trả lời rõ ràng theo biểu mẫu sau: "Hiện tại tài liệu chưa có số liệu riêng của Phân hiệu vào mốc thời gian này, [Nếu có số liệu Phân hiệu ở mốc khác thì bổ sung thêm]".
+                - Nếu câu hỏi chỉ là chào hỏi, hoặc các câu xã giao, hãy trả lời bằng lời chào thân thiện, giới thiệu về bản thân chatbot, KHÔNG kéo thêm thông tin chi tiết trong context.
+                - Năm của dữ liệu: lấy từ heading trong context (VD: "Đề án tuyển sinh 2026").
+        KHÔNG tự suy đoán hoặc copy năm từ câu hỏi của người dùng nếu context không xác nhận.
+                - Hệ đào tạo: đọc heading context để xác định đúng hệ (Chính quy, Vừa làm vừa học,
+        Liên thông, Từ xa...) rồi nêu rõ trong câu trả lời.
+                - LƯU Ý QUAN TRỌNG: Phải phân biệt rõ ràng giữa số liệu của "Nhóm ngành" (tổng của nhiều ngành) và số liệu của một "Ngành" cụ thể. 
+                TUYỆT ĐỐI KHÔNG lấy chỉ tiêu tổng của cả một "Nhóm ngành" để gán cho một "Ngành" đơn lẻ.
+                Nếu người dùng hỏi 1 ngành cụ thể nhưng tài liệu chỉ có số liệu tổng của Nhóm ngành, bạn phải trả lời rõ: "Tài liệu hiện tại chỉ thống kê chỉ tiêu tổng của cả Nhóm ngành [Tên nhóm ngành] là [Số lượng], chưa có số liệu bóc tách chi tiết cho riêng ngành bạn hỏi."`
+                - Cuối câu trả lời, nếu phù hợp, hãy gợi ý một chủ đề liên quan 
+                    mà người dùng có thể quan tâm tiếp theo (điểm chuẩn, học bổng, 
+                    chuyên ngành, học phí...). Thay đổi gợi ý theo ngữ cảnh câu hỏi, 
+                    không lặp lại cùng một câu mẫu.
+                """
+                full_response = ""
+                async for chunk in self.llm.astream(prompt):
+                    text = chunk.content or ""
+                    full_response += text
+                    yield text
+                    await asyncio.sleep(0)  # Nhường event loop
             print(full_response)
             memory.save_context({"input": query}, {"output": full_response})
 
@@ -915,6 +1043,7 @@ class TrainingService:
                 )
                 db.add(user_msg)
                 db.flush()
+            print(f"Enter Nope")
             memory = memory_service.get_memory(session_id)
             mem_vars = memory.load_memory_variables({})
             chat_history = mem_vars.get("chat_history", "")
@@ -2173,6 +2302,7 @@ class TrainingService:
                 collection_name=self.documents_collection,
                 query_vector=query_embedding,
                 limit=top_k,
+                score_threshold=0.5,
                 query_filter={"must": must_conditions},
             )
 

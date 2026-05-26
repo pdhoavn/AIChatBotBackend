@@ -574,19 +574,20 @@ async def stream_chat(
             trace_id,
         )
 
-        tier_check_start = time.perf_counter()
-        tier_source = await sse_service.llm_document_recommendation_check(
-            enriched_query, context
-        )
-        tier_check_elapsed_ms = int((time.perf_counter() - tier_check_start) * 1000)
-        _chat_log(
-            f"llm_document_recommendation_check result={tier_source} elapsed_ms={tier_check_elapsed_ms}",
-            trace_id,
-        )
+        # tier_check_start = time.perf_counter()
+        # tier_source = await sse_service.llm_document_recommendation_check(
+        #     enriched_query, context
+        # )
+        # tier_check_elapsed_ms = int((time.perf_counter() - tier_check_start) * 1000)
+        # _chat_log(
+        #     f"llm_document_recommendation_check result={tier_source} elapsed_ms={tier_check_elapsed_ms}",
+        #     trace_id,
+        # )
 
         # === TIER 2: document ===
-        if tier_source == "document" and confidence >= confidence_threshold:
+        if tier_source == "document":
             answer_text = ""
+            print(f"SCORE BEFORE DOC: {confidence}")
             async for chunk in sse_service.stream_response_from_context(
                 enriched_query,
                 context,
@@ -594,6 +595,10 @@ async def stream_chat(
                 user_id,
                 intent_id,
                 message,
+                query_embedding=result.get("query_embedding"),
+                current_audience_id=audience_id,
+                current_intent_id=intent_id_from_client,
+                confidence=confidence,
             ):
                 piece = getattr(chunk, "content", str(chunk))
                 answer_text += piece
@@ -641,51 +646,51 @@ async def stream_chat(
             return
 
         # === TIER 3: recommendation ===
-        elif tier_source == "recommendation":
-            async for chunk in sse_service.stream_response_from_recommendation(
-                user_id, session_id, enriched_query, message
-            ):
-                yield _sse_event(
-                    {
-                        "event": "chunk",
-                        "content": getattr(chunk, "content", str(chunk)),
-                    }
-                )
-            yield _sse_event({"event": "done", "sources": [], "confidence": confidence})
-            total_elapsed_ms = int((time.perf_counter() - request_start) * 1000)
-            _chat_log(
-                f"done tier=recommendation confidence={confidence:.6f} sources=[] elapsed_ms={total_elapsed_ms}",
-                trace_id,
-            )
-            return
+        # elif tier_source == "recommendation":
+        #     async for chunk in sse_service.stream_response_from_recommendation(
+        #         user_id, session_id, enriched_query, message
+        #     ):
+        #         yield _sse_event(
+        #             {
+        #                 "event": "chunk",
+        #                 "content": getattr(chunk, "content", str(chunk)),
+        #             }
+        #         )
+        #     yield _sse_event({"event": "done", "sources": [], "confidence": confidence})
+        #     total_elapsed_ms = int((time.perf_counter() - request_start) * 1000)
+        #     _chat_log(
+        #         f"done tier=recommendation confidence={confidence:.6f} sources=[] elapsed_ms={total_elapsed_ms}",
+        #         trace_id,
+        #     )
+        #     return
 
-        # === TIER 4: nope / low-confidence document ===
-        elif tier_source == "document" or tier_source == "nope":
-            async for chunk in sse_service.stream_response_from_NA(
-                query=enriched_query,
-                context=context,
-                session_id=session_id,
-                user_id=user_id,
-                intent_id=0,
-                message=message,
-                current_audience_id=audience_id,
-                current_intent_id=intent_id_from_client,
-                query_embedding=result.get("query_embedding"),
-            ):
-                yield _sse_event(
-                    {
-                        "event": "chunk",
-                        "content": getattr(chunk, "content", str(chunk)),
-                    }
-                )
-            yield _sse_event({"event": "done", "sources": [], "confidence": confidence})
-            total_elapsed_ms = int((time.perf_counter() - request_start) * 1000)
-            _chat_log(
-                f"done tier=nope confidence={confidence:.6f} "
-                f"sources=[] elapsed_ms={total_elapsed_ms}",
-                trace_id,
-            )
-            return
+        # # === TIER 4: nope / low-confidence document ===
+        # elif tier_source == "document" or tier_source == "nope":
+        #     async for chunk in sse_service.stream_response_from_NA(
+        #         query=enriched_query,
+        #         context=context,
+        #         session_id=session_id,
+        #         user_id=user_id,
+        #         intent_id=0,
+        #         message=message,
+        #         current_audience_id=audience_id,
+        #         current_intent_id=intent_id_from_client,
+        #         query_embedding=result.get("query_embedding"),
+        #     ):
+        #         yield _sse_event(
+        #             {
+        #                 "event": "chunk",
+        #                 "content": getattr(chunk, "content", str(chunk)),
+        #             }
+        #         )
+        #     yield _sse_event({"event": "done", "sources": [], "confidence": confidence})
+        #     total_elapsed_ms = int((time.perf_counter() - request_start) * 1000)
+        #     _chat_log(
+        #         f"done tier=nope confidence={confidence:.6f} "
+        #         f"sources=[] elapsed_ms={total_elapsed_ms}",
+        #         trace_id,
+        #     )
+        #     return
 
     return StreamingResponse(
         event_generator(),
