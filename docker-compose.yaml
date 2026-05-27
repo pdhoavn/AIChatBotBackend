@@ -52,6 +52,21 @@ services:
     networks:
       - ai-network
 
+  chatbot_widget:
+    build:
+      context: ../../project_ai_fe/AIChatBotFontend/chatbotwidget
+      args:
+        BACKEND_URL: https://apichatbot.vsmartoffice.vn
+    image: hoapham/chatbot_widget:latest
+    container_name: chatbot_widget
+    ports:
+      - "8888:80"
+    depends_on:
+      - backend
+    networks:
+      - ai-network
+    restart: always
+
 # Định nghĩa Volumes bền vững
 volumes:
   postgres_data:
