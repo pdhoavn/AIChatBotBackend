@@ -279,7 +279,7 @@ class TrainingService:
         chat_history = mem_vars.get("chat_history", "")
 
         prompt = f"""
-        Bạn là một trợ lý chuẩn hóa truy vấn cho chatbot RAG tư vấn tuyển sinh {self.university_name}.
+        Bạn là một trợ lý chuẩn hóa truy vấn cho chatbot RAG tư vấn tuyển sinh của {self.university_name}.
 
         Cuộc hội thoại gần đây:
         {chat_history}
@@ -288,20 +288,14 @@ class TrainingService:
         "{user_message}"
 
         NHIỆM VỤ:
-        - Chỉ viết lại câu hỏi của người dùng cho rõ ràng hơn nếu:
-        • Câu trả lời hiện tại phụ thuộc trực tiếp vào hội thoại trước đó
-        • Hoặc người dùng dùng đại từ, câu rút gọn, câu thiếu chủ ngữ
-        - Mọi câu của người dùng đều kèm theo đuôi "{self.university_name}"
-        - TUYỆT ĐỐI KHÔNG:
-        • Thêm thông tin mới
-        • Thêm phạm vi mới (ví dụ: “các trường khác”, “tại Việt Nam”, “so sánh”)
-        • Thay đổi mục tiêu câu hỏi
-        • Suy đoán ý định người dùng
-
-        - Nếu câu hỏi đã rõ ràng và độc lập:
-        → Trả về NGUYÊN VĂN phản hồi mới nhất của người dùng.
-
-        - Chỉ xuất ra MỘT câu truy vấn tiếng Việt, không giải thích.
+        Viết lại câu hỏi mới nhất thành một câu truy vấn ĐỘC LẬP, ĐẦY ĐỦ NGỮ NGHĨA để máy tìm kiếm (Vector Search) có thể hiểu được chính xác mà không cần đọc lại lịch sử.
+        MẶC ĐỊNH HỆ ĐÀO TẠO: Nếu người dùng hỏi chung chung về tuyển sinh, điểm chuẩn, tiêu chí, xét học bạ... mà KHÔNG nhắc đến hệ đào tạo nào, BẮT BUỘC bổ sung cụm từ "Hệ Đại học Chính quy" vào câu truy vấn. 
+        (Ví dụ: "tiêu chí xét học bạ là gì" -> "Tiêu chí xét học bạ (Phương thức 2) của Hệ Đại học Chính quy tại Phân hiệu UTC2 là gì?")
+        HƯỚNG DẪN:
+        1. KHÔI PHỤC NGỮ CẢNH: Thay thế các đại từ (nó, trường này, ngành đó), câu rút gọn, hoặc chủ ngữ bị khuyết bằng các DANH TỪ RIÊNG cụ thể (tên trường, tên cơ sở, tên ngành, phương thức) ĐÃ XUẤT HIỆN trong hội thoại trước đó.
+        2. KHÔNG BỊA ĐẶT: TUYỆT ĐỐI KHÔNG thêm thông tin hoàn toàn mới chưa từng được nhắc đến. KHÔNG thay đổi mục tiêu câu hỏi.
+        3. GIỮ NGUYÊN NẾU ĐÃ RÕ RÀNG: Nếu câu hỏi mới nhất đã tự mang đủ ngữ nghĩa độc lập, hãy trả về NGUYÊN VĂN.
+        4. KẾT QUẢ ĐẦU RA: Chỉ in ra ĐÚNG 1 CÂU truy vấn tiếng Việt, TUYỆT ĐỐI KHÔNG giải thích, KHÔNG có dấu ngoặc kép bọc ngoài.
 
         """
         # assume async predict exists
@@ -553,8 +547,136 @@ class TrainingService:
             suggestion = None
 
             print("→ going to LLM context")
-
             prompt = f"""Bạn là một chatbot tra cứu thông tin chuyên nghiệp của trường {self.university_name}
+            Đây là đoạn hội thoại trước: 
+            {chat_history}
+            === THÔNG TIN THAM KHẢO ===
+            {context}
+            === CÂU HỎI ===
+            {query}
+            === PHONG CÁCH TRẢ LỜI ===
+            Cách trả lời:
+                - ĐỐI VỚI DỮ LIỆU SỐ LƯỢNG/CHỈ TIÊU: BẮT BUỘC trình bày dưới dạng danh sách gạch đầu dòng (bullet points) thật gọn gàng, dễ nhìn.
+                - TUYỆT ĐỐI KHÔNG in ra định dạng bảng chứa các ký tự "|".
+                - Dễ hiểu
+                - Thân thiện
+                - Trả lời bằng tiếng Việt
+                - Dùng ngôn ngữ đời thường
+                - Dùng Markdown linh hoạt: chỉ dùng tiêu đề ## và gạch đầu dòng khi câu trả lời có nhiều mục rõ ràng. Câu trả lời ngắn thì viết thành đoạn văn tự nhiên, không cần chia heading.
+                - Nếu trong câu trả lời có đường dẫn thì hãy markdown đường dẫn
+            Không được:
+                - Lặp lại ý người dùng
+                - Dùng ngôn ngữ AI máy móc, robot
+                - TUYỆT ĐỐI KHÔNG ĐƯỢC LẤP LIẾM, TỰ GÁN THÔNG TIN
+            Cách phản hồi:
+                - Trả lời trực tiếp câu hỏi
+                - Nếu cần, hướng dẫn từng bước
+                - Gợi ý thông tin liên quan hữu ích
+                - Nếu có đường dẫn liên quan đến nội dung người dùng muốn biết, có thể gợi ý để họ tự tìm hiểu thêm, TUYỆT ĐỐI không được lấy đường dẫn không liên quan đến nội dung trả lời
+            === HƯỚNG DẪN XỬ LÝ LƯU Ý ===
+            - Dựa vào thông tin tham khảo trên được cung cấp
+            - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
+            - Bạn là chatbot tra cứu thông tin chuyên nghiệp của {self.university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác hay phân hiệu khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
+            - Nếu không tìm thấy thông tin → Nói rõ hệ thống chưa có dữ liệu, →  Có thể chọn đường dẫn chọn phù hợp từ context để gợi ý
+            chỉ khi đường dẫn đó TRỰC TIẾP xử lý đúng vấn đề được hỏi.
+            - KHI NGƯỜI DÙNG YÊU CẦU LIỆT KÊ SỐ LƯỢNG / CHỈ TIÊU CÁC NGÀNH: Bạn bắt buộc phải rà soát toàn bộ bảng trong tài liệu và liệt kê ĐẦY ĐỦ TẤT CẢ các ngành có trong ngữ cảnh. TUYỆT ĐỐI KHÔNG ĐƯỢC BỎ SÓT, KHÔNG ĐƯỢC TỰ Ý TÓM TẮT BỚT NGÀNH. Hãy đọc từ trên xuống dưới một cách cẩn thận.
+            - Khi trả lời về một đơn vị/phòng ban cụ thể, CHỈ sử dụng thông tin
+                từ chunk có heading KHỚP CHÍNH XÁC với tên đơn vị được hỏi.
+                KHÔNG lấy thông tin (website, email, SĐT) từ chunk của đơn vị khác
+                dù tên có vẻ tương tự.
+            - Hãy phân biệt rõ thực thể 'Trường' (toàn trường/cơ sở chính) và 'Phân hiệu tại TP.HCM/UTC2'. Nếu tài liệu chỉ nói chung về 'Trường' thì KHÔNG ĐƯỢC gán đó là của Phân hiệu.
+                + CHIẾN LƯỢC TRẢ LỜI THAM KHẢO (BẮT BUỘC): Trong trường hợp người dùng hỏi về Phân hiệu nhưng tài liệu chỉ có số liệu/quy định chung của Toàn trường, bạn KHÔNG ĐƯỢC giấu thông tin. Hãy trả lời theo cấu trúc sau: "Trong tài liệu hiện tại, mình chưa thấy quy định/số liệu áp dụng riêng cho Phân hiệu UTC2. Tuy vậy, tài liệu có nêu các thông tin chung của Trường Đại học Giao thông Vận tải, bạn có thể tham khảo:".
+                + TIẾP THEO ĐÓ: Bạn BẮT BUỘC phải trích xuất và liệt kê CHI TIẾT các con số, định mức, hoặc nội dung cụ thể của Toàn trường ra các gạch đầu dòng (Ví dụ: phải ghi rõ bao nhiêu giờ, bao nhiêu tiền...). TUYỆT ĐỐI KHÔNG chỉ liệt kê các tiêu đề chung chung rồi bắt người dùng phải hỏi thêm.
+            - Nếu câu hỏi chỉ là chào hỏi, hoặc các câu xã giao, hãy trả lời bằng lời chào thân thiện, giới thiệu về bản thân chatbot, KHÔNG kéo thêm thông tin chi tiết trong context.
+            - Năm của dữ liệu: lấy từ heading trong context (VD: "Đề án tuyển sinh 2026").
+    KHÔNG tự suy đoán hoặc copy năm từ câu hỏi của người dùng nếu context không xác nhận.
+            - Cuối câu trả lời, nếu phù hợp, hãy gợi ý một chủ đề liên quan đến context
+                mà người dùng có thể quan tâm tiếp theo (điểm chuẩn, học bổng, 
+                chuyên ngành, học phí...). Thay đổi gợi ý theo ngữ cảnh câu hỏi, 
+                không lặp lại cùng một câu mẫu.
+            - Nếu context không có data phù hợp để trả lời người dùng thì cuối câu kèm theo [[user/setaudience]]
+            """
+            full_response = ""
+            async for chunk in self.llm.astream(prompt):
+                text = chunk.content or ""
+                full_response += text
+                yield text
+                await asyncio.sleep(0)  # Nhường event loop
+            print(full_response)
+            memory.save_context({"input": query}, {"output": full_response})
+
+            # === Lưu bot response vào DB ===
+            bot_msg = ChatInteraction(
+                message_text=full_response,
+                timestamp=datetime.now(),
+                rating=None,
+                is_from_bot=True,
+                sender_id=None,
+                session_id=session_id,
+            )
+            db.add(bot_msg)
+            db.flush()
+            # 🧩 5. Commit 1 lần duy nhất
+            db.commit()
+            self.update_faq_statistics(db, bot_msg.interaction_id, intent_id=intent_id)
+            print(f"💾 Saved both user+bot messages for session {session_id}")
+        except SQLAlchemyError as e:
+            db.rollback()
+            print(f" Database error during chat transaction: {e}")
+        finally:
+            db.close()
+
+    async def stream_response_from_context_tuyensinh(
+        self,
+        query: str,
+        context: str,
+        session_id: int,
+        user_id: int,
+        intent_id: int,
+        message: str,
+        query_embedding: Optional[List[float]] = None,
+        current_audience_id: int = None,
+        current_intent_id: int = None,
+        confidence: float = 5.0,
+    ):
+        print("vào doc stream")
+        db = SessionLocal()
+        suggestion_threshold = float(os.getenv("CONFIDENCE_SCORE", 0.35))
+        try:
+            if not user_id:
+                # 🧩 1. Lưu tin nhắn người dùng
+                user_msg = ChatInteraction(
+                    message_text=message,
+                    timestamp=datetime.now(),
+                    rating=None,
+                    is_from_bot=False,
+                    sender_id=None,
+                    session_id=session_id,
+                )
+                db.add(user_msg)
+                db.flush()
+            else:
+                # 🧩 1. Lưu tin nhắn người dùng
+                user_msg = ChatInteraction(
+                    message_text=message,
+                    timestamp=datetime.now(),
+                    rating=None,
+                    is_from_bot=False,
+                    sender_id=user_id,
+                    session_id=session_id,
+                )
+
+                db.add(user_msg)
+                db.flush()
+            memory = memory_service.get_memory(session_id)
+            mem_vars = memory.load_memory_variables({})
+            chat_history = mem_vars.get("chat_history", "")
+            full_response = ""
+            suggestion = None
+
+            print("→ going to LLM context tuyensinh")
+
+            prompt = f"""Bạn là một chatbot tra cứu thông tuyển sinh chuyên nghiệp của trường {self.university_name}
             Đây là đoạn hội thoại trước: 
             {chat_history}
             === THÔNG TIN THAM KHẢO ===
@@ -585,6 +707,16 @@ class TrainingService:
             1. CHỐNG BỊA ĐẶT ĐA HỆ ĐÀO TẠO: Ngành nào CÓ TÊN TRONG BẢNG CỦA HỆ NÀO thì mới được liệt kê vào hệ đào tạo đó. TUYỆT ĐỐI KHÔNG copy số liệu của hệ Chính quy xuống gán cho hệ khác. Nếu bảng của hệ đó không có tên ngành, BẮT BUỘC kết luận: "Tài liệu không có thông tin chỉ tiêu cho ngành này ở hệ [Tên hệ]."
             2. PHÂN BIỆT NHÓM NGÀNH VÀ NGÀNH: TUYỆT ĐỐI KHÔNG lấy tổng chỉ tiêu của cả một "Nhóm ngành" để gán cho một "Ngành" đơn lẻ. Nếu chỉ có số liệu nhóm, trả lời: "Tài liệu hiện tại chỉ thống kê chỉ tiêu tổng của cả Nhóm ngành [Tên nhóm] là [Số lượng], chưa có số liệu tách riêng cho ngành này."
             3. TÍNH CHÍNH XÁC CỦA ĐƠN VỊ: Khi trả lời về một đơn vị/phòng ban, CHỈ dùng thông tin từ chunk có tiêu đề khớp chính xác với đơn vị đó. Không lấy râu ông nọ cắm cằm bà kia.
+            4. KIỂM CHỨNG HEADING (CHAIN-OF-THOUGHT BẮT BUỘC):
+                Trước khi đưa ra bất kỳ con số hay tiêu chí nào, bạn BẮT BUỘC phải viết ra một dòng trích dẫn nguồn gốc theo cú pháp sau:
+                > "Dữ liệu được trích xuất từ mục: [Ghi chính xác tên Heading trong ngoặc vuông của Context]"
+                - SAU ĐÓ, bạn phải tự đối chiếu: Nếu [Tên Heading] thuộc hệ "Vừa làm vừa học" hoặc "Từ xa" nhưng câu hỏi của người dùng là "Chính quy" (hoặc không hỏi hệ nào), BẮT BUỘC kết luận: "Hiện tại tài liệu chỉ kéo lên quy định của hệ Vừa làm vừa học/Từ xa, chưa có thông tin tiêu chí cho hệ Chính quy."
+                - TUYỆT ĐỐI KHÔNG được lấy số liệu của Heading này rồi tự ý đổi tên thành hệ đào tạo khác để trả lời.
+            5. BẮT BUỘC KHAI BÁO HỆ ĐÀO TẠO/PHẠM VI: 
+            - Khi trích xuất bất kỳ tiêu chí, điểm số, hay quy định nào từ ngữ cảnh, BẮT BUỘC phải ghi rõ quy định đó thuộc Hệ đào tạo nào (Chính quy, Vừa làm vừa học, Từ xa...) dựa vào Tiêu đề (Heading) của đoạn ngữ cảnh chứa thông tin đó.
+            - TUYỆT ĐỐI KHÔNG trả lời chung chung kiểu "Tài liệu cho thấy tiêu chí là...". 
+            - Mẫu trả lời đúng: "Đối với Hệ [Tên hệ đào tạo theo Heading], tài liệu quy định tiêu chí là..."
+            - CẢNH BÁO TÌNH HUỐNG LỘN XỘN: Nếu người dùng hỏi Hệ Chính quy, nhưng context chỉ kéo lên quy định của Hệ Vừa làm vừa học, BẮT BUỘC phải nói: "Hiện tại tài liệu chưa có quy định chi tiết cho Hệ Chính quy. Tuy nhiên, đối với Hệ Vừa làm vừa học, quy định là..."
             === HƯỚNG DẪN XỬ LÝ LƯU Ý ===
             - Dựa vào thông tin tham khảo trên được cung cấp
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.

@@ -486,7 +486,7 @@ async def stream_chat(
             f"sources={result.get('sources', [])}",
             trace_id,
         )
-
+        print(f"audience id {audience_id}")
         # === TIER 1: training_qa ===
         if tier_source == "training_qa" and confidence > confidence_threshold:
             top = result["top_match"]
@@ -585,7 +585,70 @@ async def stream_chat(
         )
 
         # === TIER 2: document ===
-        if tier_source == "document" and confidence > confidence_threshold:
+        if (
+            tier_source == "document"
+            and confidence > confidence_threshold
+            and audience_id == 4
+        ):
+            answer_text = ""
+            print(f"SCORE BEFORE DOC: {confidence}")
+            async for chunk in sse_service.stream_response_from_context_tuyensinh(
+                enriched_query,
+                context,
+                session_id,
+                user_id,
+                intent_id,
+                message,
+                query_embedding=result.get("query_embedding"),
+                current_audience_id=audience_id,
+                current_intent_id=intent_id_from_client,
+                confidence=confidence,
+            ):
+                piece = getattr(chunk, "content", str(chunk))
+                answer_text += piece
+                yield _sse_event({"event": "chunk", "content": piece})
+
+            # Citation guard
+            allowed_sources = result.get("sources", [])
+            if sse_service.is_insufficient_answer(answer_text):
+                filtered_sources = []
+                _chat_log(
+                    "citation_guard skipped: insufficient_answer -> sources=[]",
+                    trace_id,
+                )
+            else:
+                used_doc_ids = await sse_service.infer_used_document_ids(
+                    query=enriched_query,
+                    answer_text=answer_text,
+                    context_chunks=context_chunks,
+                    allowed_sources=allowed_sources,
+                    trace_id=trace_id,
+                )
+                filtered_sources = [
+                    src
+                    for src in allowed_sources
+                    if src.get("document_id") in used_doc_ids
+                ]
+                _chat_log(
+                    f"citation_guard used_doc_ids={used_doc_ids} filtered_sources={filtered_sources}",
+                    trace_id,
+                )
+
+            yield _sse_event(
+                {
+                    "event": "done",
+                    "sources": filtered_sources,
+                    "confidence": confidence,
+                }
+            )
+            total_elapsed_ms = int((time.perf_counter() - request_start) * 1000)
+            _chat_log(
+                f"done tier=document confidence={confidence:.6f} "
+                f"sources={filtered_sources} elapsed_ms={total_elapsed_ms}",
+                trace_id,
+            )
+            return
+        elif tier_source == "document" and confidence > confidence_threshold:
             answer_text = ""
             print(f"SCORE BEFORE DOC: {confidence}")
             async for chunk in sse_service.stream_response_from_context(
@@ -644,7 +707,6 @@ async def stream_chat(
                 trace_id,
             )
             return
-
         # === TIER 3: recommendation ===
         # elif tier_source == "recommendation":
         #     async for chunk in sse_service.stream_response_from_recommendation(
