@@ -289,14 +289,53 @@ class TrainingService:
 
         NHIỆM VỤ:
         Viết lại câu hỏi mới nhất thành một câu truy vấn ĐỘC LẬP, ĐẦY ĐỦ NGỮ NGHĨA để máy tìm kiếm (Vector Search) có thể hiểu được chính xác mà không cần đọc lại lịch sử.
-        MẶC ĐỊNH HỆ ĐÀO TẠO: Nếu người dùng hỏi chung chung về tuyển sinh, điểm chuẩn, tiêu chí, xét học bạ... mà KHÔNG nhắc đến hệ đào tạo nào, BẮT BUỘC bổ sung cụm từ "Hệ Đại học Chính quy" vào câu truy vấn. 
-        (Ví dụ: "tiêu chí xét học bạ là gì" -> "Tiêu chí xét học bạ (Phương thức 2) của Hệ Đại học Chính quy tại Phân hiệu UTC2 là gì?")
         HƯỚNG DẪN:
         1. KHÔI PHỤC NGỮ CẢNH: Thay thế các đại từ (nó, trường này, ngành đó), câu rút gọn, hoặc chủ ngữ bị khuyết bằng các DANH TỪ RIÊNG cụ thể (tên trường, tên cơ sở, tên ngành, phương thức) ĐÃ XUẤT HIỆN trong hội thoại trước đó.
         2. KHÔNG BỊA ĐẶT: TUYỆT ĐỐI KHÔNG thêm thông tin hoàn toàn mới chưa từng được nhắc đến. KHÔNG thay đổi mục tiêu câu hỏi.
         3. GIỮ NGUYÊN NẾU ĐÃ RÕ RÀNG: Nếu câu hỏi mới nhất đã tự mang đủ ngữ nghĩa độc lập, hãy trả về NGUYÊN VĂN.
         4. KẾT QUẢ ĐẦU RA: Chỉ in ra ĐÚNG 1 CÂU truy vấn tiếng Việt, TUYỆT ĐỐI KHÔNG giải thích, KHÔNG có dấu ngoặc kép bọc ngoài.
+        5. CẤM GẮN NHÃN PHÂN HIỆU: TUYỆT ĐỐI KHÔNG tự động thêm các cụm từ "Phân hiệu", "UTC2", "mã GSA" vào câu truy vấn. vì các quy định này thường áp dụng chung cho Toàn trường Đại học GTVT. Chỉ cần viết lại câu hỏi rõ nghĩa là đủ (Ví dụ: "Trích xuất quy định về giờ nghiên cứu khoa học của giảng viên"). Chỉ giữ lại chữ UTC2 hoặc tên phân hiệu nếu chính người dùng chủ động gõ vào câu hỏi của họ.
+        """
+        # assume async predict exists
+        enriched = await self.llm.ainvoke(prompt)
+        print("==== RAW RESPONSE ====")
+        print(user_message)
+        print("======================")
+        # fallback: if empty use original
+        enriched_txt = (
+            (enriched.content or "").strip().splitlines()[0]
+            if enriched
+            else user_message
+        )
+        return enriched_txt
 
+    async def enrich_query_tuyensinh(self, session_id: str, user_message: str) -> str:
+        memory = memory_service.get_memory(session_id)
+        mem_vars = memory.load_memory_variables({})
+        chat_history = mem_vars.get("chat_history", "")
+
+        prompt = f"""
+        Bạn là một trợ lý chuẩn hóa truy vấn cho chatbot RAG tư vấn tuyển sinh của {self.university_name}.
+
+        Cuộc hội thoại gần đây:
+        {chat_history}
+
+        Phản hồi mới nhất của người dùng:
+        "{user_message}"
+
+        NHIỆM VỤ:
+ 
+        HƯỚNG DẪN BẮT BUỘC:
+        1. KHÔI PHỤC NGỮ CẢNH: Thay thế các đại từ (nó, trường này, ngành đó), câu rút gọn, hoặc chủ ngữ bị khuyết bằng các DANH TỪ RIÊNG cụ thể (tên trường, tên cơ sở, tên ngành, phương thức) ĐÃ XUẤT HIỆN trong hội thoại trước đó.
+        2. KHÔNG BỊA ĐẶT: TUYỆT ĐỐI KHÔNG thêm thông tin hoàn toàn mới chưa từng được nhắc đến. KHÔNG thay đổi mục tiêu câu hỏi.
+        3. GIỮ NGUYÊN NẾU ĐÃ RÕ RÀNG: Nếu câu hỏi mới nhất đã tự mang đủ ngữ nghĩa độc lập, hãy trả về NGUYÊN VĂN.
+        4. KẾT QUẢ ĐẦU RA: Chỉ in ra ĐÚNG 1 CÂU truy vấn tiếng Việt, TUYỆT ĐỐI KHÔNG giải thích, KHÔNG có dấu ngoặc kép bọc ngoài.
+        5. BƠM TỪ KHÓA PHÂN HIỆU: LUÔN LUÔN đảm bảo câu truy vấn có cụm từ "{self.university_name}, mã tuyển sinh GSA" để máy tìm kiếm khoanh vùng đúng cơ sở.
+        6. Viết lại câu hỏi mới nhất thành một câu truy vấn ĐỘC LẬP, ĐẦY ĐỦ NGỮ NGHĨA để máy tìm kiếm (Vector Search) có thể hiểu được chính xác mà không cần đọc lại lịch sử.
+        7. MẶC ĐỊNH HỆ ĐÀO TẠO: Nếu người dùng hỏi chung chung về tuyển sinh, điểm chuẩn, tiêu chí, xét học bạ... mà KHÔNG nhắc đến hệ đào tạo nào, BẮT BUỘC bổ sung cụm từ "Hệ Đại học Chính quy" vào câu truy vấn.
+        3. DỊCH THUẬT NGỮ TUYỂN SINH (Rất quan trọng):
+            - Nhắc đến "học bạ" hoặc "kết quả học tập" -> BẮT BUỘC chèn thêm "Phương thức 2 (PT2)".
+            - Nhắc đến "đánh giá năng lực" hoặc "ĐGNL" -> BẮT BUỘC chèn thêm "Phương thức 3 (PT3)".
         """
         # assume async predict exists
         enriched = await self.llm.ainvoke(prompt)
@@ -573,20 +612,126 @@ class TrainingService:
                 - Nếu cần, hướng dẫn từng bước
                 - Gợi ý thông tin liên quan hữu ích
                 - Nếu có đường dẫn liên quan đến nội dung người dùng muốn biết, có thể gợi ý để họ tự tìm hiểu thêm, TUYỆT ĐỐI không được lấy đường dẫn không liên quan đến nội dung trả lời
+            === Thông tin các phòng ban bạn có thể tham khảo để gợi ý nếu cần thiết tùy tình hướng ===
+                Phòng Tổ chức Hành chính
+                Tham mưu về tổ chức cán bộ, tuyển dụng, quy hoạch, bồi dưỡng và chế độ chính sách cho viên chức.
+                Làm công tác hành chính tổng hợp, văn thư, lưu trữ.
+                Quản lý công tác bảo vệ, an ninh trật tự.
+                Phụ trách công tác y tế ban đầu.
+                Quản lý nhà khách giáo viên, phòng họp và phòng làm việc của Ban Giám đốc.
+                Địa chỉ: Phòng 1, Phòng 2-3 Nhà D3, số 450 Đường Lê Văn Việt, P. Tăng Nhơn Phú, TP. Hồ Chí Minh
+                Điện thoại: 028 38966798
+                Email: tochuchanhchinh@utc2.edu.vn
+
+                Đào tạo
+                Tổ chức và quản lý đào tạo các hệ.
+                Xếp thời khóa biểu, xếp lịch thi, rà soát kế hoạch học tập năm học.
+                Quản lý kết quả học tập, xét học bổng, cảnh báo học vụ, tốt nghiệp.
+                Cấp bảng điểm, xử lý các quyết định liên quan đến sinh viên như chuyển điểm, thôi học, chuyển hệ.
+                Phụ trách công tác tốt nghiệp, xét nhận đề tài, thành lập hội đồng.
+                Tổ chức đào tạo GDQP-AN.
+                Địa chỉ: Phòng 8, 9, 10 Nhà D3, số 450 Lê Văn Việt, P. Tăng Nhơn Phú A, TP. Hồ Chí Minh
+                Điện thoại: (028) 3896 2018; (028) 3730 7908
+                Email: bandaotao@utc2.edu.vn
+
+                Phòng Khảo thí và Đảm bảo chất lượng đào tạo
+                Tổ chức các kỳ thi kết thúc học phần.
+                Quản lý đề thi, chấm thi, và kết quả thi.
+                Làm công tác đảm bảo chất lượng đào tạo.
+                Khảo sát ý kiến người học và các bên liên quan.
+                Phụ trách kiểm định, đánh giá ngoài và tuyển sinh.
+                Địa chỉ: Phòng 108, 109, 110 Nhà E10, số 451 Lê Văn Việt, P. Tăng Nhơn Phú A, TP. Hồ Chí Minh
+                Điện thoại: 028 3896 2819; 028 3730 6883; 028 3730 7120
+                Email: bankt-dbcl@utc2.edu.vn
+                
+                Công tác chính trị và Sinh viên
+                Phụ trách công tác chính trị, tư tưởng, tuyên truyền.
+                Quản lý hồ sơ sinh viên.
+                Tổ chức các hoạt động văn hóa, thể thao, thi đua khen thưởng.
+                Hỗ trợ sinh viên về chính sách, học bổng, vay vốn tín dụng.
+                Quản lý thẻ sinh viên, cố vấn học tập, đánh giá rèn luyện.
+                Xét và đề nghị kỷ luật sinh viên khi vi phạm.
+                Địa chỉ: Phòng 6, Phòng 15 Nhà D3, số 450 Lê Văn Việt, P. Tăng Nhơn Phú A, TP. Hồ Chí Minh
+                Điện thoại: 028 3736 0564
+                Email: phongctctsv@utc2.edu.vn
+                
+                Khoa học Công nghệ & Đối ngoại
+                Xây dựng và triển khai kế hoạch khoa học công nghệ.
+                Quản lý, theo dõi các hoạt động nghiên cứu khoa học.
+                Phụ trách công tác đối ngoại.
+                Hỗ trợ các hoạt động truyền thông, bồi dưỡng ngắn hạn, giảng bài theo phân công.
+                Địa chỉ: Nhà D7, số 450 Lê Văn Việt, P. Tăng Nhơn Phú A, TP. Hồ Chí Minh
+                Điện thoại: 028 3736 1575
+                Email: stic@utc2.edu.vn
+                
+                Phòng Thiết bị - Quản trị
+                Quản lý cơ sở vật chất, trang thiết bị, công trình phục vụ hoạt động của trường.
+                Phụ trách công tác quản trị, sửa chữa, bảo trì và vận hành các hạng mục của nhà trường.
+                Địa chỉ: Nhà D7, số 450 Lê Văn Việt, P. Tăng Nhơn Phú, TP. Hồ Chí Minh
+                Email: thietbiquantri@utc2.edu.vn
+                Trong dữ liệu bạn gửi chưa thấy ghi rõ số điện thoại của phòng này.
+                
+                Phòng Tài chính - Kế toán
+                Quản lý, phân phối và giám sát việc sử dụng kinh phí của trường.
+                Thu học phí.
+                Chi trả học bổng và trợ cấp xã hội cho sinh viên.
+                Địa chỉ: Phòng 4, 5, 7 Nhà D3, số 450 Lê Văn Việt, P. Tăng Nhơn Phú, TP. Hồ Chí Minh
+                Điện thoại: (028) 3896 2174
+                Email: taichinhketoan@utc2.edu.vn
+                
+                Ban Thanh tra
+                Kiểm tra việc thực hiện giờ giấc lên lớp của giảng viên.
+                Giám sát các kỳ thi tuyển sinh, thi kết thúc học phần, thi sát hạch ngoại ngữ.
+                Tiếp công dân, xử lý đơn thư phản ánh, kiến nghị, khiếu nại, tố cáo.
+                Kiểm tra sau tuyển sinh và các nội dung liên quan đến tính minh bạch trong đào tạo.
+                Địa chỉ: Nhà E1, khu Giảng đường, số 451 Lê Văn Việt, P. Tăng Nhơn Phú A, TP. Hồ Chí Minh
+                Điện thoại: 028 3730 9469
+                Email: thanhtra@utc2.edu.vn
+
+                Trung tâm Đào tạo thực hành và Chuyển giao Công nghệ GTVT
+                Quản lý, khai thác phòng thực hành và thí nghiệm.
+                Tổ chức đào tạo các phần mềm chuyên ngành, bồi dưỡng kiến thức trong và ngoài trường.
+                Thực hiện dịch vụ khoa học công nghệ, lao động sản xuất, nghiên cứu và chuyển giao công nghệ.
+                Địa chỉ: Nhà E7, số 451 Lê Văn Việt, Phường Tăng Nhơn Phú, TP. Hồ Chí Minh
+                Điện thoại: (028) 3736 0512
+                Fax: (028) 3736 0676
+                Email: daotaothuchanh@utc2.edu.vn
+                Website: http://dept.utc2.edu.vn/trungtamdaotao/
+
+                Trung tâm Thông tin - Thư viện
+                Quản lý hệ thống CNTT toàn trường.
+                Tổ chức thu thập, khai thác tài liệu phục vụ học tập và giảng dạy.
+                Cung cấp dịch vụ thư viện, mượn trả sách và tài liệu cho sinh viên, giảng viên.
+                Địa chỉ: Nhà C3, số 451 Lê Văn Việt, Phường Tăng Nhơn Phú, TP. Hồ Chí Minh
+                Điện thoại: 028 3730 9492
+                Website: http://thuvien.utc2.edu.vn/
+                Email: thongtinthuvien@utc2.edu.
+                
+                Ban Quản lý Ký túc xá tại UTC2
+                Quản lý khu ký túc xá.
+                Tổ chức tiếp nhận, bố trí chỗ ở cho sinh viên nội trú.
+                Ký, thực hiện và đình chỉ hợp đồng nội trú theo quy định.
+                Xử lý các trường hợp vi phạm nội quy ký túc xá.
+                Địa chỉ: Số 450 Lê Văn Việt, Phường Tăng Nhơn Phú, TP. Hồ Chí Minh
+                Điện thoại: (028) 3730.9099
+                Email: kytucxa@utc2.edu.vn
+                Fanpage: https://www.facebook.com/ktxutc2
+            === KỈ LUẬT THÉP ===
+            1. BẢO VỆ TÍNH CHÍNH XÁC CỦA ĐƠN VỊ VÀ LIÊN HỆ (CẤM RÂU ÔNG NỌ CẮM CẰM BÀ KIA):
+                - Khi bạn khuyên người dùng liên hệ một đơn vị/phòng ban cụ thể (Ví dụ: Phòng Đào tạo, Phòng Khảo thí), BẮT BUỘC chỉ được cung cấp thông tin liên hệ (SĐT, Email) CỦA CHÍNH XÁC PHÒNG BAN ĐÓ (phải khớp tên).
+                - LỆNH CẤM THAY THẾ: TUYỆT ĐỐI KHÔNG copy số điện thoại của các phòng ban khác (như Tuyển sinh, Tổ chức hành chính, CTCTSV...) dán vào để "chữa cháy" hoặc "gợi ý thêm" khi không tìm thấy số của phòng ban cần thiết.
+                - CÁCH XỬ LÝ KHI THIẾU DATA: Nếu khuyên liên hệ "Phòng X" nhưng trong context KHÔNG CÓ số điện thoại của "Phòng X", BẮT BUỘC chỉ dừng lại ở lời khuyên và nói rõ: "Hiện tại hệ thống chưa có thông tin liên hệ trực tiếp của phòng này, bạn vui lòng tra cứu trên website trường nhé." (CẤM tự động liệt kê số của Tổ chức hành chính/Đường dây nóng ra để bù đắp).
             === HƯỚNG DẪN XỬ LÝ LƯU Ý ===
             - Dựa vào thông tin tham khảo trên được cung cấp
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
             - Bạn là chatbot tra cứu thông tin chuyên nghiệp của {self.university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác hay phân hiệu khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
             - Nếu không tìm thấy thông tin → Nói rõ hệ thống chưa có dữ liệu, →  Có thể chọn đường dẫn chọn phù hợp từ context để gợi ý
             chỉ khi đường dẫn đó TRỰC TIẾP xử lý đúng vấn đề được hỏi.
-            - KHI NGƯỜI DÙNG YÊU CẦU LIỆT KÊ SỐ LƯỢNG / CHỈ TIÊU CÁC NGÀNH: Bạn bắt buộc phải rà soát toàn bộ bảng trong tài liệu và liệt kê ĐẦY ĐỦ TẤT CẢ các ngành có trong ngữ cảnh. TUYỆT ĐỐI KHÔNG ĐƯỢC BỎ SÓT, KHÔNG ĐƯỢC TỰ Ý TÓM TẮT BỚT NGÀNH. Hãy đọc từ trên xuống dưới một cách cẩn thận.
+            - KHI NGƯỜI DÙNG YÊU CẦU LIỆT KÊ SỐ LƯỢNG: Bạn bắt buộc phải rà soát toàn bộ bảng trong tài liệu và liệt kê ĐẦY ĐỦ TẤT CẢ các ngành có trong ngữ cảnh. TUYỆT ĐỐI KHÔNG ĐƯỢC BỎ SÓT, KHÔNG ĐƯỢC TỰ Ý TÓM TẮT BỚT NGÀNH. Hãy đọc từ trên xuống dưới một cách cẩn thận.
             - Khi trả lời về một đơn vị/phòng ban cụ thể, CHỈ sử dụng thông tin
                 từ chunk có heading KHỚP CHÍNH XÁC với tên đơn vị được hỏi.
                 KHÔNG lấy thông tin (website, email, SĐT) từ chunk của đơn vị khác
                 dù tên có vẻ tương tự.
-            - Hãy phân biệt rõ thực thể 'Trường' (toàn trường/cơ sở chính) và 'Phân hiệu tại TP.HCM/UTC2'. Nếu tài liệu chỉ nói chung về 'Trường' thì KHÔNG ĐƯỢC gán đó là của Phân hiệu.
-                + CHIẾN LƯỢC TRẢ LỜI THAM KHẢO (BẮT BUỘC): Trong trường hợp người dùng hỏi về Phân hiệu nhưng tài liệu chỉ có số liệu/quy định chung của Toàn trường, bạn KHÔNG ĐƯỢC giấu thông tin. Hãy trả lời theo cấu trúc sau: "Trong tài liệu hiện tại, mình chưa thấy quy định/số liệu áp dụng riêng cho Phân hiệu UTC2. Tuy vậy, tài liệu có nêu các thông tin chung của Trường Đại học Giao thông Vận tải, bạn có thể tham khảo:".
-                + TIẾP THEO ĐÓ: Bạn BẮT BUỘC phải trích xuất và liệt kê CHI TIẾT các con số, định mức, hoặc nội dung cụ thể của Toàn trường ra các gạch đầu dòng (Ví dụ: phải ghi rõ bao nhiêu giờ, bao nhiêu tiền...). TUYỆT ĐỐI KHÔNG chỉ liệt kê các tiêu đề chung chung rồi bắt người dùng phải hỏi thêm.
             - Nếu câu hỏi chỉ là chào hỏi, hoặc các câu xã giao, hãy trả lời bằng lời chào thân thiện, giới thiệu về bản thân chatbot, KHÔNG kéo thêm thông tin chi tiết trong context.
             - Năm của dữ liệu: lấy từ heading trong context (VD: "Đề án tuyển sinh 2026").
     KHÔNG tự suy đoán hoặc copy năm từ câu hỏi của người dùng nếu context không xác nhận.
@@ -640,6 +785,7 @@ class TrainingService:
         confidence: float = 5.0,
     ):
         print("vào doc stream")
+        print(context)
         db = SessionLocal()
         suggestion_threshold = float(os.getenv("CONFIDENCE_SCORE", 0.35))
         try:
@@ -676,7 +822,7 @@ class TrainingService:
 
             print("→ going to LLM context tuyensinh")
 
-            prompt = f"""Bạn là một chatbot tra cứu thông tuyển sinh chuyên nghiệp của trường {self.university_name}
+            prompt = f"""Bạn là một chatbot tra cứu thông tuyển sinh chuyên nghiệp của trường {self.university_name}, mã tuyển sinh GSA
             Đây là đoạn hội thoại trước: 
             {chat_history}
             === THÔNG TIN THAM KHẢO ===
@@ -708,22 +854,27 @@ class TrainingService:
             2. PHÂN BIỆT NHÓM NGÀNH VÀ NGÀNH: TUYỆT ĐỐI KHÔNG lấy tổng chỉ tiêu của cả một "Nhóm ngành" để gán cho một "Ngành" đơn lẻ. Nếu chỉ có số liệu nhóm, trả lời: "Tài liệu hiện tại chỉ thống kê chỉ tiêu tổng của cả Nhóm ngành [Tên nhóm] là [Số lượng], chưa có số liệu tách riêng cho ngành này."
             3. TÍNH CHÍNH XÁC CỦA ĐƠN VỊ: Khi trả lời về một đơn vị/phòng ban, CHỈ dùng thông tin từ chunk có tiêu đề khớp chính xác với đơn vị đó. Không lấy râu ông nọ cắm cằm bà kia.
             4. KIỂM CHỨNG HEADING (CHAIN-OF-THOUGHT BẮT BUỘC):
-                Trước khi đưa ra bất kỳ con số hay tiêu chí nào, bạn BẮT BUỘC phải viết ra một dòng trích dẫn nguồn gốc theo cú pháp sau:
-                > "Dữ liệu được trích xuất từ mục: [Ghi chính xác tên Heading trong ngoặc vuông của Context]"
-                - SAU ĐÓ, bạn phải tự đối chiếu: Nếu [Tên Heading] thuộc hệ "Vừa làm vừa học" hoặc "Từ xa" nhưng câu hỏi của người dùng là "Chính quy" (hoặc không hỏi hệ nào), BẮT BUỘC kết luận: "Hiện tại tài liệu chỉ kéo lên quy định của hệ Vừa làm vừa học/Từ xa, chưa có thông tin tiêu chí cho hệ Chính quy."
+                - Bạn phải tự đối chiếu: Nếu [Tên Heading] thuộc hệ "Vừa làm vừa học" hoặc "Từ xa" nhưng câu hỏi của người dùng là "Chính quy" (hoặc không hỏi hệ nào), BẮT BUỘC kết luận: "Hiện tại tài liệu chỉ kéo lên quy định của hệ Vừa làm vừa học/Từ xa, chưa có thông tin tiêu chí cho hệ Chính quy."
                 - TUYỆT ĐỐI KHÔNG được lấy số liệu của Heading này rồi tự ý đổi tên thành hệ đào tạo khác để trả lời.
             5. BẮT BUỘC KHAI BÁO HỆ ĐÀO TẠO/PHẠM VI: 
-            - Khi trích xuất bất kỳ tiêu chí, điểm số, hay quy định nào từ ngữ cảnh, BẮT BUỘC phải ghi rõ quy định đó thuộc Hệ đào tạo nào (Chính quy, Vừa làm vừa học, Từ xa...) dựa vào Tiêu đề (Heading) của đoạn ngữ cảnh chứa thông tin đó.
-            - TUYỆT ĐỐI KHÔNG trả lời chung chung kiểu "Tài liệu cho thấy tiêu chí là...". 
-            - Mẫu trả lời đúng: "Đối với Hệ [Tên hệ đào tạo theo Heading], tài liệu quy định tiêu chí là..."
-            - CẢNH BÁO TÌNH HUỐNG LỘN XỘN: Nếu người dùng hỏi Hệ Chính quy, nhưng context chỉ kéo lên quy định của Hệ Vừa làm vừa học, BẮT BUỘC phải nói: "Hiện tại tài liệu chưa có quy định chi tiết cho Hệ Chính quy. Tuy nhiên, đối với Hệ Vừa làm vừa học, quy định là..."
-            === HƯỚNG DẪN XỬ LÝ LƯU Ý ===
+                - Khi trích xuất bất kỳ tiêu chí, điểm số, hay quy định nào từ ngữ cảnh, BẮT BUỘC phải ghi rõ quy định đó thuộc Hệ đào tạo nào (Chính quy, Vừa làm vừa học, Từ xa...) dựa vào Tiêu đề (Heading) của đoạn ngữ cảnh chứa thông tin đó.
+                - TUYỆT ĐỐI KHÔNG trả lời chung chung kiểu "Tài liệu cho thấy tiêu chí là...". 
+                - Mẫu trả lời đúng: "Đối với Hệ [Tên hệ đào tạo theo Heading], tài liệu quy định tiêu chí là..."
+                - CẢNH BÁO TÌNH HUỐNG LỘN XỘN: Nếu người dùng hỏi Hệ Chính quy, nhưng context chỉ kéo lên quy định của Hệ Vừa làm vừa học, BẮT BUỘC phải nói: "Hiện tại tài liệu chưa có quy định chi tiết cho Hệ Chính quy. Tuy nhiên, đối với Hệ Vừa làm vừa học, quy định là..."
+            6. SÀNG LỌC ĐÚNG ĐỐI TƯỢNG VÀ ĐIỀU KIỆN (CỰC KỲ QUAN TRỌNG):
+                - BẮT BUỘC phải đọc kỹ các ĐIỀU KIỆN RÀNG BUỘC trong câu hỏi của người dùng (Ví dụ: Năm tốt nghiệp, Hệ đào tạo, Diện xét tuyển).
+                - Khi trích xuất thông tin từ Context, CHỈ ĐƯỢC PHÉP giữ lại những quy định/thủ tục ÁP DỤNG ĐÚNG cho điều kiện của người dùng.
+                - LỆNH CẤM: TUYỆT ĐỐI KHÔNG copy thừa thãi các quy định dành cho đối tượng khác. (Ví dụ: Nếu người dùng hỏi cách đăng ký cho thí sinh "tốt nghiệp năm 2026", CẤM liệt kê thủ tục dành riêng cho thí sinh "tốt nghiệp trước năm 2026", trừ khi thủ tục đó là quy định chung cho tất cả).
+                - Hướng dẫn gom nhóm: Nếu có các trường hợp ngoại lệ (ví dụ: dùng minh chứng điểm cộng, xét tuyển thẳng), phải ghi rõ "CHỈ ÁP DỤNG NẾU bạn thuộc diện..." để người dùng không bị hiểu lầm.
+            === HƯỚNG DẪN XỬ LÝ ===
             - Dựa vào thông tin tham khảo trên được cung cấp
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
             - Bạn là chatbot tra cứu thông tin chuyên nghiệp của {self.university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác hay phân hiệu khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
-            - Nếu không tìm thấy thông tin → Nói rõ hệ thống chưa có dữ liệu, →  Có thể chọn đường dẫn chọn phù hợp từ context để gợi ý
+            - Nếu không tìm thấy thông tin → Nói rõ hệ thống mục tuyển sinh chưa có dữ liệu, →  Có thể chọn đường dẫn chọn phù hợp từ context để gợi ý
             chỉ khi đường dẫn đó TRỰC TIẾP xử lý đúng vấn đề được hỏi.
-            - KHI NGƯỜI DÙNG YÊU CẦU LIỆT KÊ SỐ LƯỢNG / CHỈ TIÊU CÁC NGÀNH: Bạn bắt buộc phải rà soát toàn bộ bảng trong tài liệu và liệt kê ĐẦY ĐỦ TẤT CẢ các ngành có trong ngữ cảnh. TUYỆT ĐỐI KHÔNG ĐƯỢC BỎ SÓT, KHÔNG ĐƯỢC TỰ Ý TÓM TẮT BỚT NGÀNH. Hãy đọc từ trên xuống dưới một cách cẩn thận.
+            - QUY TẮC KÍCH HOẠT LIỆT KÊ NGÀNH (CHỈ DÙNG KHI CÓ YÊU CẦU RÕ RÀNG):
+                + NẾU VÀ CHỈ NẾU người dùng hỏi TRỰC TIẾP đến "Ngành nào", "Danh sách ngành", "Chỉ tiêu cụ thể", bạn MỚI ĐƯỢC PHÉP liệt kê ngành. Lúc này, BẮT BUỘC rà soát toàn bộ bảng, liệt kê ĐẦY ĐỦ TẤT CẢ các ngành. TUYỆT ĐỐI KHÔNG bỏ sót hoặc tự ý tóm tắt.
+                + NGƯỢC LẠI, nếu người dùng CHỈ hỏi về "Hệ đào tạo" hoặc "Phương thức", CẤM liệt kê danh sách ngành bên trong hệ đó để tránh dài dòng. Chỉ liệt kê Tên Hệ/Phương thức là đủ.
             - XỬ LÝ TÌNH HUỐNG HỎI CHUNG CHUNG (AMBIGUITY): Nếu người dùng hỏi chung chung mà context có nhiều hệ đào tạo:
                 + CHỈ liệt kê các hệ đào tạo MÀ CONTEXT CÓ DỮ LIỆU THỰC TẾ.
                 + TUYỆT ĐỐI không tự suy ra hoặc thêm vào các hệ không có trong context.
@@ -736,18 +887,20 @@ class TrainingService:
             - Hãy phân biệt rõ thực thể 'Trường' (toàn trường/cơ sở chính) và 'Phân hiệu tại TP.HCM/UTC2'. Nếu tài liệu chỉ nói chung về 'Trường' thì KHÔNG ĐƯỢC gán đó là của Phân hiệu.
                 + CHIẾN LƯỢC TRẢ LỜI THAM KHẢO (BẮT BUỘC): Trong trường hợp người dùng hỏi về Phân hiệu nhưng tài liệu chỉ có số liệu/quy định chung của Toàn trường, bạn KHÔNG ĐƯỢC giấu thông tin. Hãy trả lời theo cấu trúc sau: "Trong tài liệu hiện tại, mình chưa thấy quy định/số liệu áp dụng riêng cho Phân hiệu UTC2. Tuy vậy, tài liệu có nêu các thông tin chung của Trường Đại học Giao thông Vận tải, bạn có thể tham khảo:".
                 + TIẾP THEO ĐÓ: Bạn BẮT BUỘC phải trích xuất và liệt kê CHI TIẾT các con số, định mức, hoặc nội dung cụ thể của Toàn trường ra các gạch đầu dòng (Ví dụ: phải ghi rõ bao nhiêu giờ, bao nhiêu tiền...). TUYỆT ĐỐI KHÔNG chỉ liệt kê các tiêu đề chung chung rồi bắt người dùng phải hỏi thêm.
-            - Nếu câu hỏi chỉ là chào hỏi, hoặc các câu xã giao, hãy trả lời bằng lời chào thân thiện, giới thiệu về bản thân chatbot, KHÔNG kéo thêm thông tin chi tiết trong context.
-            - Năm của dữ liệu: lấy từ heading trong context (VD: "Đề án tuyển sinh 2026").
+            - Ghi rõ năm của dữ liệu mà bạn lấy được từ heading trong context (VD: "Đề án tuyển sinh 2026").
     KHÔNG tự suy đoán hoặc copy năm từ câu hỏi của người dùng nếu context không xác nhận.
             - Hệ đào tạo: đọc heading context để xác định đúng hệ (Chính quy, Vừa làm vừa học,
     Liên thông, Từ xa...) rồi nêu rõ trong câu trả lời.
             - LƯU Ý QUAN TRỌNG: Phải phân biệt rõ ràng giữa số liệu của "Nhóm ngành" (tổng của nhiều ngành) và số liệu của một "Ngành" cụ thể. 
             TUYỆT ĐỐI KHÔNG lấy chỉ tiêu tổng của cả một "Nhóm ngành" để gán cho một "Ngành" đơn lẻ.
             Nếu người dùng hỏi 1 ngành cụ thể nhưng tài liệu chỉ có số liệu tổng của Nhóm ngành, bạn phải trả lời rõ: "Tài liệu hiện tại chỉ thống kê chỉ tiêu tổng của cả Nhóm ngành [Tên nhóm ngành] là [Số lượng], chưa có số liệu bóc tách chi tiết cho riêng ngành bạn hỏi."`
+            - GỢI Ý CHÉO ĐỂ HIỂU ĐÚNG Ý NGƯỜI DÙNG: Học sinh thường nhầm lẫn giữa "Thủ tục nộp hồ sơ" và "Phương thức xét tuyển (cách tính điểm)". 
+              + Nếu người dùng hỏi về "cách nộp hồ sơ/thủ tục đăng ký", sau khi trả lời thủ tục, BẮT BUỘC phải gợi ý thêm: "Bạn có muốn mình cung cấp thêm thông tin chi tiết về các Phương thức xét tuyển (PT1, PT2...) và cách tính điểm không?".
+              + Ngược lại, nếu họ hỏi "Phương thức xét tuyển", sau khi trả lời xong hãy gợi ý: "Bạn có muốn biết thêm về thời gian và thủ tục nộp hồ sơ cho các phương thức này không?".
             - Cuối câu trả lời, nếu phù hợp, hãy gợi ý một chủ đề liên quan đến context
                 mà người dùng có thể quan tâm tiếp theo (điểm chuẩn, học bổng, 
                 chuyên ngành, học phí...). Thay đổi gợi ý theo ngữ cảnh câu hỏi, 
-                không lặp lại cùng một câu mẫu.
+                không lặp lại cùng một câu mẫu. 
             - Nếu context không có data phù hợp để trả lời người dùng thì cuối câu kèm theo [[user/setaudience]]
             """
             full_response = ""
@@ -2597,7 +2750,9 @@ Yêu cầu:
         confidence_score = float(os.getenv("CONFIDENCE_SCORE", 0.35))
         # STEP 1: Search training Q&A
         self._debug_log(f"hybrid_search: start query_len={len(query or '')}", trace_id)
-
+        top_k = self.top_k
+        if audience_ids == 4:
+            top_k = 20
         # Optimize: Embed query once
         try:
             query_embedding = await self.embeddings.aembed_query(query)
@@ -2609,7 +2764,7 @@ Yêu cầu:
             query,
             audience_ids,
             intent_id,
-            top_k=self.top_k,
+            top_k=top_k,
             trace_id=trace_id,
             stage="hybrid_training_qa_search",
             query_embedding=query_embedding,
@@ -2647,7 +2802,7 @@ Yêu cầu:
             query,
             audience_ids,
             intent_id,
-            top_k=self.top_k,
+            top_k=top_k,
             trace_id=trace_id,
             stage="hybrid_tier2_document_search",
             query_embedding=query_embedding,

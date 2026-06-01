@@ -386,7 +386,7 @@ async def stream_chat(
     - done: kết thúc, kèm sources và confidence
     - error: lỗi
     """
-    top_k = os.getenv("TOP_K", 5)
+
     confidence_threshold = float(os.getenv("CONFIDENCE_SCORE", 0.35))
     sse_service = TrainingService()
 
@@ -430,6 +430,7 @@ async def stream_chat(
         session_id = sse_service.create_chat_session(user_id, "chatbot")
 
     async def event_generator():
+        top_k = os.getenv("TOP_K", 5)
         # Gửi session info
         yield _sse_event({"event": "session", "session_id": session_id})
 
@@ -441,7 +442,13 @@ async def stream_chat(
         )
 
         # --- enrich_query ---
-        enriched_query = await sse_service.enrich_query(session_id, message)
+        if audience_id == 4:
+            top_k = 20
+            enriched_query = await sse_service.enrich_query_tuyensinh(
+                session_id, message
+            )
+        else:
+            enriched_query = await sse_service.enrich_query(session_id, message)
         _chat_log(f"enriched_query={enriched_query}", trace_id)
 
         if not enriched_query:
@@ -568,6 +575,23 @@ async def stream_chat(
             )
             yield _sse_event({"event": "done", "sources": [], "confidence": 0.0})
             return
+        clean_context_chunks = []
+        for r in context_chunks:
+            chunk_text = r.payload.get("chunk_text", "")
+
+            # Nếu người dùng đang hỏi cho năm 2026 hoặc hỏi chung chung về chỉ tiêu
+            if "2026" in enriched_query:
+                # Điều kiện trảm: Chunk chứa bảng thống kê năm cũ (có cả 2024 và 2025)
+                if "Năm 2024" in chunk_text and "Năm 2025" in chunk_text:
+                    # Ghi log để theo dõi hệ thống có chém nhầm không
+                    _chat_log(
+                        f"Filtered historical chunk: {chunk_text[:50]}...", trace_id
+                    )
+                    continue  # Bỏ qua chunk này, CHÉM!
+
+            # Nếu chunk sạch (hoặc không dính điều kiện trên), thêm vào danh sách
+            clean_context_chunks.append(r)
+        context_chunks = clean_context_chunks
         context = "\n\n".join([r.payload.get("chunk_text", "") for r in context_chunks])
         _chat_log(
             f"context_precheck chunks={len(context_chunks)} chars={len(context)} intent_id={intent_id}",
