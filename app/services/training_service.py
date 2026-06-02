@@ -330,7 +330,7 @@ class TrainingService:
         2. KHÔNG BỊA ĐẶT: TUYỆT ĐỐI KHÔNG thêm thông tin hoàn toàn mới chưa từng được nhắc đến. KHÔNG thay đổi mục tiêu câu hỏi.
         3. GIỮ NGUYÊN NẾU ĐÃ RÕ RÀNG: Nếu câu hỏi mới nhất đã tự mang đủ ngữ nghĩa độc lập, hãy trả về NGUYÊN VĂN.
         4. KẾT QUẢ ĐẦU RA: Chỉ in ra ĐÚNG 1 CÂU truy vấn tiếng Việt, TUYỆT ĐỐI KHÔNG giải thích, KHÔNG có dấu ngoặc kép bọc ngoài.
-        5. BƠM TỪ KHÓA PHÂN HIỆU: LUÔN LUÔN đảm bảo câu truy vấn có cụm từ "{self.university_name}, mã tuyển sinh GSA" để máy tìm kiếm khoanh vùng đúng cơ sở.
+        5. BƠM TỪ KHÓA PHÂN HIỆU: LUÔN LUÔN đảm bảo câu truy vấn có cụm từ "Phân hiệu Tp. Hồ Chí Minh, mã trường(tuyển sinh) GSA" để máy tìm kiếm khoanh vùng đúng cơ sở.
         6. Viết lại câu hỏi mới nhất thành một câu truy vấn ĐỘC LẬP, ĐẦY ĐỦ NGỮ NGHĨA để máy tìm kiếm (Vector Search) có thể hiểu được chính xác mà không cần đọc lại lịch sử.
         7. MẶC ĐỊNH HỆ ĐÀO TẠO: Nếu người dùng hỏi chung chung về tuyển sinh, điểm chuẩn, tiêu chí, xét học bạ... mà KHÔNG nhắc đến hệ đào tạo nào, BẮT BUỘC bổ sung cụm từ "Hệ Đại học Chính quy" vào câu truy vấn.
         3. DỊCH THUẬT NGỮ TUYỂN SINH (Rất quan trọng):
@@ -1948,6 +1948,102 @@ class TrainingService:
         """Chunk plain text — dùng cho TXT, OCR, xlsx, pptx..."""
         return [c for c in char_splitter.split_text(content) if c.strip()]
 
+    def _split_large_table(self, chunk: str, max_rows: int = 6) -> list[str]:
+        """
+        Nếu chunk chứa bảng có quá nhiều dòng dữ liệu,
+        split thành các chunk nhỏ hơn, mỗi chunk giữ lại header bảng.
+        """
+        lines = chunk.splitlines()
+
+        # Tách phần header context (trước bảng) và phần bảng
+        header_context = []  # phần [section > ...] và mô tả
+        table_lines = []
+        in_table = False
+
+        for line in lines:
+            if line.startswith("|") and not in_table:
+                in_table = True
+            if in_table:
+                table_lines.append(line)
+            else:
+                header_context.append(line)
+
+        if not table_lines:
+            return [chunk]
+
+        # Xác định header bảng (2 dòng đầu: header + ---)
+        table_header = []
+        data_rows = []
+        found_separator = False
+        for line in table_lines:
+            if not found_separator:
+                table_header.append(line)
+                if "| --- |" in line or "|---|" in line:
+                    found_separator = True
+            else:
+                data_rows.append(line)
+
+        # Nếu ít hơn max_rows thì không cần split
+        if len(data_rows) <= max_rows:
+            return [chunk]
+
+        # Split thành các nhóm max_rows dòng
+        prefix = "\n".join(header_context)
+        table_head_str = "\n".join(table_header)
+
+        sub_chunks = []
+        for i in range(0, len(data_rows), max_rows):
+            batch = data_rows[i : i + max_rows]
+            sub_chunk = f"{prefix}\n{table_head_str}\n" + "\n".join(batch)
+            sub_chunks.append(sub_chunk)
+
+        return sub_chunks
+
+    def _enrich_table_chunks(self, chunks: list[str], doc_context: str) -> list[str]:
+        def has_table(chunk: str) -> bool:
+            return "| --- |" in chunk or chunk.count("|") > 10
+
+        enriched = []
+        for chunk in chunks:
+            if not has_table(chunk):
+                enriched.append(chunk)
+                continue
+
+            # --- THÊM: split bảng lớn trước ---
+            sub_chunks = self._split_large_table(chunk, max_rows=6)
+
+            for sub in sub_chunks:
+                try:
+                    prompt = f"""Bạn là trợ lý phân tích tài liệu tuyển sinh đại học.
+
+    Dưới đây là một đoạn trích từ tài liệu có chứa bảng dữ liệu:
+    ---
+    {sub[:3000]}
+    ---
+
+    Ngữ cảnh tài liệu:
+    {doc_context[:800]}
+
+    Hãy viết một đoạn mô tả ngắn (3-5 câu) bằng tiếng Việt tóm tắt:
+    - Bảng này thuộc mục nào, nói về điều gì
+    - Có những ngành nào trong đoạn này (liệt kê tên ngành cụ thể)
+    - Có điểm chuẩn, chỉ tiêu nào đáng chú ý
+
+    Chỉ trả về đoạn mô tả, không giải thích thêm."""
+
+                    response = self.llm.invoke(prompt)
+                    description = (
+                        response.content
+                        if hasattr(response, "content")
+                        else str(response)
+                    )
+                    enriched.append(f"{description.strip()}\n\n{sub}")
+                except Exception as e:
+                    print(f"[WARN] Enrich table chunk failed: {e}")
+                    enriched.append(sub)
+
+        return enriched
+
     def delete_document(self, db: Session, document_id: int, current_user: Users):
         doc = db.query(KnowledgeBaseDocument).filter_by(document_id=document_id).first()
         if not doc:
@@ -2752,7 +2848,7 @@ Yêu cầu:
         self._debug_log(f"hybrid_search: start query_len={len(query or '')}", trace_id)
         top_k = self.top_k
         if audience_ids == 4:
-            top_k = 20
+            top_k = 10
         # Optimize: Embed query once
         try:
             query_embedding = await self.embeddings.aembed_query(query)
