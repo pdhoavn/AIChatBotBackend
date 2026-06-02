@@ -4,6 +4,7 @@ import time
 import json
 import re
 from dotenv import load_dotenv
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import (
     MarkdownHeaderTextSplitter,
@@ -50,21 +51,74 @@ class TrainingService:
     def __init__(self):
         self.top_k = os.getenv("TOP_K", 5)
         self.ai_api_key = os.getenv("AI_API_KEY")
-        # self.llm = ChatOpenAI(
-        #     model=os.getenv("LLM_MODEL", "gpt-4.1-mini"),
-        #     api_key=self.openai_api_key,
-        #     temperature=0.7,
-        # )
-
-        self.llm = init_chat_model(
+        self.openai_llm = init_chat_model(
             model=os.getenv("LLM_MODEL", "gpt-4.1-mini"),
             api_key=self.ai_api_key,  # Truyền rõ ràng api key ở đây
-            temperature=0.7,
+            temperature=float(os.getenv("OPENAI_LLM_TEMPERATURE", 0.2)),
         )
         self.embeddings = OpenAIEmbeddings(
             model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-large"),
             api_key=self.ai_api_key,
         )
+        llm_provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        if llm_provider == "gemini" and gemini_api_key:
+            self.control_llm = ChatGoogleGenerativeAI(
+                model=os.getenv(
+                    "GEMINI_CONTROL_MODEL",
+                    os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+                ),
+                google_api_key=gemini_api_key,
+                temperature=float(os.getenv("GEMINI_CONTROL_TEMPERATURE", 0)),
+            )
+            self.answer_llm = ChatGoogleGenerativeAI(
+                model=os.getenv(
+                    "GEMINI_ANSWER_MODEL",
+                    os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+                ),
+                google_api_key=gemini_api_key,
+                temperature=float(os.getenv("GEMINI_ANSWER_TEMPERATURE", 0.3)),
+            )
+            print(
+                "Gemini LLM enabled: control="
+                f"{os.getenv('GEMINI_CONTROL_MODEL', os.getenv('GEMINI_MODEL', 'gemini-2.0-flash'))}, "
+                "answer="
+                f"{os.getenv('GEMINI_ANSWER_MODEL', os.getenv('GEMINI_MODEL', 'gemini-2.0-flash'))}"
+            )
+        elif llm_provider == "openai":
+            self.control_llm = init_chat_model(
+                model=os.getenv(
+                    "OPENAI_CONTROL_MODEL",
+                    os.getenv("LLM_MODEL", "gpt-4.1-mini"),
+                ),
+                api_key=self.ai_api_key,
+                temperature=float(os.getenv("OPENAI_CONTROL_TEMPERATURE", 0)),
+            )
+            self.answer_llm = init_chat_model(
+                model=os.getenv(
+                    "OPENAI_ANSWER_MODEL",
+                    os.getenv("LLM_MODEL", "gpt-4.1-mini"),
+                ),
+                api_key=self.ai_api_key,
+                temperature=float(os.getenv("OPENAI_ANSWER_TEMPERATURE", 0.3)),
+            )
+            print(
+                "OpenAI LLM enabled: control="
+                f"{os.getenv('OPENAI_CONTROL_MODEL', os.getenv('LLM_MODEL', 'gpt-4.1-mini'))}, "
+                "answer="
+                f"{os.getenv('OPENAI_ANSWER_MODEL', os.getenv('LLM_MODEL', 'gpt-4.1-mini'))}"
+            )
+        else:
+            self.control_llm = self.openai_llm
+            self.answer_llm = self.openai_llm
+            print(
+                f"WARNING: unsupported LLM_PROVIDER='{llm_provider}' or GEMINI_API_KEY is not set. "
+                "Falling back to OpenAI LLM; "
+                "OpenAI embeddings are still active."
+            )
+
+        # Backward-compatible alias for any older call sites.
+        self.llm = self.control_llm
 
         self.qdrant_client = QdrantClient(
             host=os.getenv("QDRANT_HOST", "localhost"),
@@ -109,6 +163,33 @@ class TrainingService:
             print(f"[RAG][{trace_id}] {message}")
             return
         print(f"[RAG] {message}")
+
+    @staticmethod
+    def _message_text(message_or_content: Any) -> str:
+        """
+        Normalize LangChain message content across OpenAI/Gemini providers.
+        Gemini may return content as a list of text parts instead of a string.
+        """
+        content = getattr(message_or_content, "content", message_or_content)
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(item)
+                elif isinstance(item, dict):
+                    text = item.get("text")
+                    if text is not None:
+                        parts.append(str(text))
+                else:
+                    text = getattr(item, "text", None)
+                    if text is not None:
+                        parts.append(str(text))
+            return "".join(parts)
+        return str(content)
 
     def create_chat_session(self, user_id: int, session_type: str = "chatbot") -> int:
         """
@@ -297,16 +378,13 @@ class TrainingService:
         5. CẤM GẮN NHÃN PHÂN HIỆU: TUYỆT ĐỐI KHÔNG tự động thêm các cụm từ "Phân hiệu", "UTC2", "mã GSA" vào câu truy vấn. vì các quy định này thường áp dụng chung cho Toàn trường Đại học GTVT. Chỉ cần viết lại câu hỏi rõ nghĩa là đủ (Ví dụ: "Trích xuất quy định về giờ nghiên cứu khoa học của giảng viên"). Chỉ giữ lại chữ UTC2 hoặc tên phân hiệu nếu chính người dùng chủ động gõ vào câu hỏi của họ.
         """
         # assume async predict exists
-        enriched = await self.llm.ainvoke(prompt)
+        enriched = await self.control_llm.ainvoke(prompt)
         print("==== RAW RESPONSE ====")
         print(user_message)
         print("======================")
         # fallback: if empty use original
-        enriched_txt = (
-            (enriched.content or "").strip().splitlines()[0]
-            if enriched
-            else user_message
-        )
+        enriched_lines = self._message_text(enriched).strip().splitlines() if enriched else []
+        enriched_txt = enriched_lines[0] if enriched_lines else user_message
         return enriched_txt
 
     async def enrich_query_tuyensinh(self, session_id: str, user_message: str) -> str:
@@ -338,16 +416,13 @@ class TrainingService:
             - Nhắc đến "đánh giá năng lực" hoặc "ĐGNL" -> BẮT BUỘC chèn thêm "Phương thức 3 (PT3)".
         """
         # assume async predict exists
-        enriched = await self.llm.ainvoke(prompt)
+        enriched = await self.control_llm.ainvoke(prompt)
         print("==== RAW RESPONSE ====")
         print(user_message)
         print("======================")
         # fallback: if empty use original
-        enriched_txt = (
-            (enriched.content or "").strip().splitlines()[0]
-            if enriched
-            else user_message
-        )
+        enriched_lines = self._message_text(enriched).strip().splitlines() if enriched else []
+        enriched_txt = enriched_lines[0] if enriched_lines else user_message
         return enriched_txt
 
     # ---------------------------
@@ -379,10 +454,11 @@ class TrainingService:
         Chỉ trả về duy nhất một từ:
         "true" hoặc "false"
         """
-        res = await self.llm.ainvoke(prompt)
-        if not res.content:
+        res = await self.control_llm.ainvoke(prompt)
+        content = self._message_text(res)
+        if not content:
             return False
-        r = res.content.strip().lower()
+        r = content.strip().lower()
         return (
             ("đúng" in r)
             or ("true" in r)
@@ -420,8 +496,8 @@ class TrainingService:
         \"\"\"
         """
 
-        res = await self.llm.ainvoke(prompt)
-        r = res.content.strip().lower()
+        res = await self.control_llm.ainvoke(prompt)
+        r = self._message_text(res).strip().lower()
         if r not in ["document", "recommendation", "nope"]:
             r = "nope"
         return r
@@ -444,10 +520,11 @@ class TrainingService:
         - "false" → nếu câu hỏi không liên quan đến các nội dung đó
         """
 
-        res = await self.llm.ainvoke(prompt)
-        if not res.content:
+        res = await self.control_llm.ainvoke(prompt)
+        content = self._message_text(res)
+        if not content:
             return False
-        r = res.content.strip().lower()
+        r = content.strip().lower()
         return (
             ("đúng" in r)
             or ("true" in r)
@@ -480,8 +557,8 @@ class TrainingService:
             """
 
         try:
-            res = await self.llm.ainvoke(prompt)
-            return res.content.strip()
+            res = await self.control_llm.ainvoke(prompt)
+            return self._message_text(res).strip()
 
         except Exception as e:
             print("LLM error:", e)
@@ -742,8 +819,8 @@ class TrainingService:
             - Nếu context không có data phù hợp để trả lời người dùng thì cuối câu kèm theo [[user/setaudience]]
             """
             full_response = ""
-            async for chunk in self.llm.astream(prompt):
-                text = chunk.content or ""
+            async for chunk in self.answer_llm.astream(prompt):
+                text = self._message_text(chunk)
                 full_response += text
                 yield text
                 await asyncio.sleep(0)  # Nhường event loop
@@ -904,8 +981,8 @@ class TrainingService:
             - Nếu context không có data phù hợp để trả lời người dùng thì cuối câu kèm theo [[user/setaudience]]
             """
             full_response = ""
-            async for chunk in self.llm.astream(prompt):
-                text = chunk.content or ""
+            async for chunk in self.answer_llm.astream(prompt):
+                text = self._message_text(chunk)
                 full_response += text
                 yield text
                 await asyncio.sleep(0)  # Nhường event loop
@@ -1007,8 +1084,8 @@ class TrainingService:
             - Nếu câu hỏi chỉ là chào hỏi, hỏi thời tiết, hoặc các câu xã giao, hãy trả lời bằng lời chào thân thiện, giới thiệu về bản thân chatbot, KHÔNG kéo thêm thông tin chi tiết trong context.
             """
             full_response = ""
-            async for chunk in self.llm.astream(prompt):
-                text = chunk.content or ""
+            async for chunk in self.answer_llm.astream(prompt):
+                text = self._message_text(chunk)
                 full_response += text
                 yield text
                 await asyncio.sleep(0)  # Nhường event loop
@@ -1126,8 +1203,8 @@ class TrainingService:
         6. Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
         """
             full_response = ""
-            async for chunk in self.llm.astream(prompt):
-                text = chunk.content or ""
+            async for chunk in self.answer_llm.astream(prompt):
+                text = self._message_text(chunk)
                 full_response += text
                 yield text
                 await asyncio.sleep(0)  # Nhường event loop
@@ -1260,8 +1337,8 @@ class TrainingService:
             7. Cuối câu trả lời kèm theo [[user/setaudience]]
             """
             full_response = ""
-            async for chunk in self.llm.astream(prompt):
-                text = chunk.content or ""
+            async for chunk in self.answer_llm.astream(prompt):
+                text = self._message_text(chunk)
                 full_response += text
                 yield text
                 await asyncio.sleep(0)  # Nhường event loop
@@ -2586,8 +2663,8 @@ Yêu cầu:
 """
 
         try:
-            res = await self.llm.ainvoke(prompt)
-            raw = (res.content or "").strip()
+            res = await self.control_llm.ainvoke(prompt)
+            raw = self._message_text(res).strip()
             parsed_ids: List[int] = []
             try:
                 obj = json.loads(raw)
