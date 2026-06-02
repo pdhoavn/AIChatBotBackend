@@ -443,7 +443,7 @@ async def stream_chat(
 
         # --- enrich_query ---
         if audience_id == 4:
-            top_k = 20
+            top_k = 18
             enriched_query = await sse_service.enrich_query_tuyensinh(
                 session_id, message
             )
