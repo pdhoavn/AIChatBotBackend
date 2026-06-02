@@ -483,9 +483,8 @@ class TrainingService:
             3. Chứa thông tin để chatbot có thể giải thích, hướng dẫn hoặc dẫn dắt người dùng đến đúng vấn đề.
 
         - Trả về "nope" CHỈ KHI Context rơi vào các trường hợp sau:
-            1. HOÀN TOÀN LẠC ĐỀ: Đọc ngữ cảnh thấy không có bất kỳ sự liên quan nào đến ý định của người dùng.
+            1. HOÀN TOÀN LẠC ĐỀ: Đọc "Nội dung Document Base (context)" thấy không có bất kỳ sự liên quan nào đến ý định của người dùng.
             2. TRÙNG TỪ KHÓA NHƯNG KHÁC Ý NGHĨA: (Ví dụ: Hỏi "Điểm chuẩn" nhưng context nói về "Tiêu chuẩn phòng cháy chữa cháy").
-            3. RÁC: Context chỉ chứa các ký tự vô nghĩa, không thể đọc hiểu.
 
         === DỮ LIỆU ĐẦU VÀO ===
         Câu hỏi người dùng: "{enriched_query}"
@@ -663,6 +662,7 @@ class TrainingService:
             suggestion = None
 
             print("→ going to LLM context")
+            print(context)
             prompt = f"""Bạn là một chatbot tra cứu thông tin chuyên nghiệp của trường {self.university_name}
             Đây là đoạn hội thoại trước: 
             {chat_history}
@@ -798,6 +798,21 @@ class TrainingService:
                 - Khi bạn khuyên người dùng liên hệ một đơn vị/phòng ban cụ thể (Ví dụ: Phòng Đào tạo, Phòng Khảo thí), BẮT BUỘC chỉ được cung cấp thông tin liên hệ (SĐT, Email) CỦA CHÍNH XÁC PHÒNG BAN ĐÓ (phải khớp tên).
                 - LỆNH CẤM THAY THẾ: TUYỆT ĐỐI KHÔNG copy số điện thoại của các phòng ban khác (như Tuyển sinh, Tổ chức hành chính, CTCTSV...) dán vào để "chữa cháy" hoặc "gợi ý thêm" khi không tìm thấy số của phòng ban cần thiết.
                 - CÁCH XỬ LÝ KHI THIẾU DATA: Nếu khuyên liên hệ "Phòng X" nhưng trong context KHÔNG CÓ số điện thoại của "Phòng X", BẮT BUỘC chỉ dừng lại ở lời khuyên và nói rõ: "Hiện tại hệ thống chưa có thông tin liên hệ trực tiếp của phòng này, bạn vui lòng tra cứu trên website trường nhé." (CẤM tự động liệt kê số của Tổ chức hành chính/Đường dây nóng ra để bù đắp).
+            2. - QUY TẮC TRẢ LỜI HỌC PHÍ (CHỈ ÁP DỤNG CHO ĐẠI HỌC):
+                + Bạn là chatbot của Trường ĐẠI HỌC Giao thông Vận tải. TUYỆT ĐỐI KHÔNG trích xuất hoặc liệt kê học phí của các cấp học không liên quan bao gồm: Mầm non, Tiểu học, Trung học cơ sở (THCS), Trung học phổ thông (THPT).
+                + Nếu Context kéo lên dữ liệu của các cấp học phổ thông này, hãy thẳng tay BỎ QUA, chỉ giữ lại dữ liệu học phí bậc Đại học (hoặc Sau đại học nếu có). Việc bỏ qua này KHÔNG BỊ TÍNH là lỗi tóm tắt thiếu dữ liệu.
+            3. - QUY TẮC TRẢ LỜI VỀ HỌC PHÍ KHI THIẾU DỮ LIỆU:
+                + Khi người dùng hỏi về "Học phí" của trường/ngành, BẮT BUỘC phải tìm số liệu học phí CỤ THỂ của trường Đại học GTVT (UTC2) (thường tính bằng VNĐ/tín chỉ hoặc VNĐ/tháng/ngành).
+                + NẾU TRONG TÀI LIỆU KHÔNG CÓ con số cụ thể này (hoặc chỉ có Nghị định quy định mức trần chung của Chính phủ), bạn BẮT BUỘC phải trả lời: "Dạ, hiện tại hệ thống chưa cập nhật thông tin học phí chính thức năm 2025-2026 của Phân hiệu UTC2. Bạn vui lòng theo dõi thêm thông báo trên website/fanpage của trường hoặc liên hệ trực tiếp bộ phận Tư vấn tuyển sinh nhé."
+                + LỆNH CẤM: TUYỆT ĐỐI KHÔNG trích xuất các con số "Mức trần học phí" từ Nghị định của Chính phủ để trả lời thay thế, vì điều này sẽ gây hiểu lầm nghiêm trọng cho sinh viên.
+            4. - PHÂN BIỆT GIỮA "SỐ LIỆU THỰC TẾ" VÀ "CÔNG THỨC/QUY ĐỊNH":
+                + Khi người dùng hỏi cụ thể về "số liệu", "tỷ lệ %", "điểm số", "bao nhiêu", bạn BẮT BUỘC phải tìm các CON SỐ THỐNG KÊ THỰC TẾ.
+                + LỆNH CẤM: TUYỆT ĐỐI KHÔNG được trả lời "Có số liệu" nhưng sau đó lại đi liệt kê "Công thức tính toán" hoặc "Định nghĩa khái niệm" từ các Thông tư, Nghị định.
+                + Xử lý khi thiếu con số: Nếu tài liệu chỉ dạy "cách tính" mà không có con số thực tế, BẮT BUỘC trả lời trung thực: "Dạ, hiện tại hệ thống chưa cập nhật con số thống kê thực tế về [chủ đề] của Phân hiệu UTC2. Tài liệu hiện tại chỉ có quy định về cách tính..."
+            5. - LOGIC ĐỒNG NHẤT CHO CÂU HỎI CÓ/KHÔNG (YES/NO QUESTIONS):
+                + Khi người dùng hỏi các câu mang tính xác nhận hành vi (Ví dụ: Có được không? Có cho không? Được phép không?), từ khẳng định/phủ định ở ĐẦU CÂU trả lời BẮT BUỘC phải đồng nhất tuyệt đối về mặt ngữ nghĩa với phần giải thích phía sau.
+                + Nếu nội dung quy định là cấm/không được phép, BẮT BUỘC mở đầu bằng: "Dạ KHÔNG," hoặc "Không được phép,". 
+                + LỆNH CẤM: TUYỆT ĐỐI KHÔNG dùng từ "Có" ở đầu câu như một từ đệm giao tiếp nếu nội dung thực tế phía sau mang ý nghĩa phủ định (Ví dụ: Cấm trả lời kiểu "Có. Theo nội quy là không được...").
             === HƯỚNG DẪN XỬ LÝ LƯU Ý ===
             - Dựa vào thông tin tham khảo trên được cung cấp
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
@@ -2925,7 +2940,7 @@ Yêu cầu:
         self._debug_log(f"hybrid_search: start query_len={len(query or '')}", trace_id)
         top_k = self.top_k
         if audience_ids == 4:
-            top_k = 10
+            top_k = 18
         # Optimize: Embed query once
         try:
             query_embedding = await self.embeddings.aembed_query(query)
