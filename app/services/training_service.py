@@ -383,7 +383,9 @@ class TrainingService:
         print(user_message)
         print("======================")
         # fallback: if empty use original
-        enriched_lines = self._message_text(enriched).strip().splitlines() if enriched else []
+        enriched_lines = (
+            self._message_text(enriched).strip().splitlines() if enriched else []
+        )
         enriched_txt = enriched_lines[0] if enriched_lines else user_message
         return enriched_txt
 
@@ -421,7 +423,9 @@ class TrainingService:
         print(user_message)
         print("======================")
         # fallback: if empty use original
-        enriched_lines = self._message_text(enriched).strip().splitlines() if enriched else []
+        enriched_lines = (
+            self._message_text(enriched).strip().splitlines() if enriched else []
+        )
         enriched_txt = enriched_lines[0] if enriched_lines else user_message
         return enriched_txt
 
@@ -976,9 +980,11 @@ class TrainingService:
                 từ chunk có heading KHỚP CHÍNH XÁC với tên đơn vị được hỏi.
                 KHÔNG lấy thông tin (website, email, SĐT) từ chunk của đơn vị khác
                 dù tên có vẻ tương tự.
-            - Hãy phân biệt rõ thực thể 'Trường' (toàn trường/cơ sở chính) và 'Phân hiệu tại TP.HCM/UTC2'. Nếu tài liệu chỉ nói chung về 'Trường' thì KHÔNG ĐƯỢC gán đó là của Phân hiệu.
-                + CHIẾN LƯỢC TRẢ LỜI THAM KHẢO (BẮT BUỘC): Trong trường hợp người dùng hỏi về Phân hiệu nhưng tài liệu chỉ có số liệu/quy định chung của Toàn trường, bạn KHÔNG ĐƯỢC giấu thông tin. Hãy trả lời theo cấu trúc sau: "Trong tài liệu hiện tại, mình chưa thấy quy định/số liệu áp dụng riêng cho Phân hiệu UTC2. Tuy vậy, tài liệu có nêu các thông tin chung của Trường Đại học Giao thông Vận tải, bạn có thể tham khảo:".
-                + TIẾP THEO ĐÓ: Bạn BẮT BUỘC phải trích xuất và liệt kê CHI TIẾT các con số, định mức, hoặc nội dung cụ thể của Toàn trường ra các gạch đầu dòng (Ví dụ: phải ghi rõ bao nhiêu giờ, bao nhiêu tiền...). TUYỆT ĐỐI KHÔNG chỉ liệt kê các tiêu đề chung chung rồi bắt người dùng phải hỏi thêm.
+            - Hãy phân biệt rõ thực thể 'Trường' (toàn trường/cơ sở chính/UTC/GHA) và 'Phân hiệu tại TP.HCM/UTC2/GSA'. Nếu tài liệu chỉ nói chung về 'Trường' thì KHÔNG ĐƯỢC gán đó là của Phân hiệu.
+                Khi trả lời câu hỏi liên quan đến một campus cụ thể (GSA hoặc GHA), chỉ sử dụng thông tin có ghi rõ mã trường tương ứng trong context.
+                Nếu một đoạn context chứa cả thông tin GSA lẫn GHA, chỉ lấy phần 
+                có ghi đúng mã trường mà người dùng hỏi, bỏ qua phần còn lại.
+                Không tự suy luận hay ghép thông tin từ campus khác sang.
             - Ghi rõ năm của dữ liệu mà bạn lấy được từ heading trong context (VD: "Đề án tuyển sinh 2026").
     KHÔNG tự suy đoán hoặc copy năm từ câu hỏi của người dùng nếu context không xác nhận.
             - Hệ đào tạo: đọc heading context để xác định đúng hệ (Chính quy, Vừa làm vừa học,
@@ -2040,11 +2046,12 @@ class TrainingService:
         """Chunk plain text — dùng cho TXT, OCR, xlsx, pptx..."""
         return [c for c in char_splitter.split_text(content) if c.strip()]
 
-    def _split_large_table(self, chunk: str, max_rows: int = 6) -> list[str]:
+    def _split_large_table(self, chunk: str, max_rows: int = 10) -> list[str]:
         """
         Nếu chunk chứa bảng có quá nhiều dòng dữ liệu,
         split thành các chunk nhỏ hơn, mỗi chunk giữ lại header bảng.
         """
+
         lines = chunk.splitlines()
 
         # Tách phần header context (trước bảng) và phần bảng
@@ -2053,6 +2060,8 @@ class TrainingService:
         in_table = False
 
         for line in lines:
+            if in_table and line.strip() == "":
+                in_table = False
             if line.startswith("|") and not in_table:
                 in_table = True
             if in_table:
@@ -2073,7 +2082,11 @@ class TrainingService:
                 if "| --- |" in line or "|---|" in line:
                     found_separator = True
             else:
-                data_rows.append(line)
+                # Bỏ qua dòng header lặp lại (không bắt đầu bằng số thứ tự)
+                if line.startswith("| TT ") or line.startswith("| tt "):
+                    table_header.append(line)
+                else:
+                    data_rows.append(line)
 
         # Nếu ít hơn max_rows thì không cần split
         if len(data_rows) <= max_rows:
@@ -2093,7 +2106,7 @@ class TrainingService:
 
     def _enrich_table_chunks(self, chunks: list[str], doc_context: str) -> list[str]:
         def has_table(chunk: str) -> bool:
-            return "| --- |" in chunk or chunk.count("|") > 10
+            return "| --- |" in chunk or "|---|" in chunk
 
         enriched = []
         for chunk in chunks:
@@ -2102,7 +2115,7 @@ class TrainingService:
                 continue
 
             # --- THÊM: split bảng lớn trước ---
-            sub_chunks = self._split_large_table(chunk, max_rows=6)
+            sub_chunks = self._split_large_table(chunk, max_rows=10)
 
             for sub in sub_chunks:
                 try:
@@ -2110,16 +2123,17 @@ class TrainingService:
 
     Dưới đây là một đoạn trích từ tài liệu có chứa bảng dữ liệu:
     ---
-    {sub[:3000]}
+    {sub}
     ---
 
     Ngữ cảnh tài liệu:
-    {doc_context[:800]}
+    {doc_context[:1500]}
 
     Hãy viết một đoạn mô tả ngắn (3-5 câu) bằng tiếng Việt tóm tắt:
-    - Bảng này thuộc mục nào, nói về điều gì
-    - Có những ngành nào trong đoạn này (liệt kê tên ngành cụ thể)
-    - Có điểm chuẩn, chỉ tiêu nào đáng chú ý
+        1. Bắt đầu bằng: "Bảng này thuộc [tên mục/section đầy đủ lấy từ dòng [...] trong đoạn trích], [hệ đào tạo], tại [địa điểm, mã trường]."
+        Lưu ý: tên mục/section chính xác được ghi trong dòng [...] ở đầu đoạn trích, hãy dùng đúng tên đó, không tự đặt lại.
+        2. Liệt kê TẤT CẢ tên ngành/chương trình xuất hiện trong đoạn bảng này (ghi rõ tên đầy đủ).
+        3. Nêu chỉ tiêu hoặc điểm chuẩn nổi bật nếu có.
 
     Chỉ trả về đoạn mô tả, không giải thích thêm."""
 
@@ -2940,7 +2954,7 @@ Yêu cầu:
         self._debug_log(f"hybrid_search: start query_len={len(query or '')}", trace_id)
         top_k = self.top_k
         if audience_ids == 4:
-            top_k = 18
+            top_k = 20
         # Optimize: Embed query once
         try:
             query_embedding = await self.embeddings.aembed_query(query)
