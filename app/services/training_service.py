@@ -410,8 +410,10 @@ class TrainingService:
         2. KHÔNG BỊA ĐẶT: TUYỆT ĐỐI KHÔNG thêm thông tin hoàn toàn mới chưa từng được nhắc đến. KHÔNG thay đổi mục tiêu câu hỏi.
         3. GIỮ NGUYÊN NẾU ĐÃ RÕ RÀNG: Nếu câu hỏi mới nhất đã tự mang đủ ngữ nghĩa độc lập, hãy trả về NGUYÊN VĂN.
         4. KẾT QUẢ ĐẦU RA: Chỉ in ra ĐÚNG 1 CÂU truy vấn tiếng Việt, TUYỆT ĐỐI KHÔNG giải thích, KHÔNG có dấu ngoặc kép bọc ngoài.
-        5. BƠM TỪ KHÓA PHÂN HIỆU: LUÔN LUÔN đảm bảo câu truy vấn có cụm từ "Phân hiệu Tp. Hồ Chí Minh, mã trường(tuyển sinh) GSA" để máy tìm kiếm khoanh vùng đúng cơ sở.
         6. Viết lại câu hỏi mới nhất thành một câu truy vấn ĐỘC LẬP, ĐẦY ĐỦ NGỮ NGHĨA để máy tìm kiếm (Vector Search) có thể hiểu được chính xác mà không cần đọc lại lịch sử.
+            + TRƯỜNG HỢP 1 (Dữ liệu đặc thù): NẾU câu hỏi liên quan đến CÁC THÔNG SỐ CỤ THỂ CỦA NGÀNH HỌC (Ví dụ: Điểm chuẩn, Điểm trúng tuyển, Chỉ tiêu, Tên ngành, Mã ngành, Tổ hợp môn). -> BẮT BUỘC thêm cụm "tại Phân hiệu TP.HCM (Mã tuyển sinh GSA)" vào cuối câu hỏi.
+            + TRƯỜNG HỢP 2 (Dữ liệu dùng chung): NẾU câu hỏi liên quan đến QUY TRÌNH & THỦ TỤC (Ví dụ: Hồ sơ, Giấy tờ, Các bước nộp, Lệ phí, Tiêu chuẩn cộng điểm, Học phí, Ký túc xá, Quy chế). -> BẮT BUỘC GIỮ NGUYÊN câu hỏi gốc (TUYỆT ĐỐI KHÔNG thêm GSA hay Phân hiệu).
+            + TRƯỜNG HỢP NGOẠI LỆ: Nếu câu hỏi quá ngắn hoặc không rõ thuộc trường hợp nào, hãy GIỮ NGUYÊN câu hỏi gốc để đảm bảo an toàn.
         7. MẶC ĐỊNH HỆ ĐÀO TẠO: Nếu người dùng hỏi chung chung về tuyển sinh, điểm chuẩn, tiêu chí, xét học bạ... mà KHÔNG nhắc đến hệ đào tạo nào, BẮT BUỘC bổ sung cụm từ "Hệ Đại học Chính quy" vào câu truy vấn.
         3. DỊCH THUẬT NGỮ TUYỂN SINH (Rất quan trọng):
             - Nhắc đến "học bạ" hoặc "kết quả học tập" -> BẮT BUỘC chèn thêm "Phương thức 2 (PT2)".
@@ -668,6 +670,7 @@ class TrainingService:
             print("→ going to LLM context")
             print(context)
             prompt = f"""Bạn là một chatbot tra cứu thông tin chuyên nghiệp của trường {self.university_name}
+            Hãy coi mọi thông tin được cung cấp trong Context chính là "kiến thức của nhà trường" và "kiến thức của bạn".
             Đây là đoạn hội thoại trước: 
             {chat_history}
             === THÔNG TIN THAM KHẢO ===
@@ -817,6 +820,8 @@ class TrainingService:
                 + Khi người dùng hỏi các câu mang tính xác nhận hành vi (Ví dụ: Có được không? Có cho không? Được phép không?), từ khẳng định/phủ định ở ĐẦU CÂU trả lời BẮT BUỘC phải đồng nhất tuyệt đối về mặt ngữ nghĩa với phần giải thích phía sau.
                 + Nếu nội dung quy định là cấm/không được phép, BẮT BUỘC mở đầu bằng: "Dạ KHÔNG," hoặc "Không được phép,". 
                 + LỆNH CẤM: TUYỆT ĐỐI KHÔNG dùng từ "Có" ở đầu câu như một từ đệm giao tiếp nếu nội dung thực tế phía sau mang ý nghĩa phủ định (Ví dụ: Cấm trả lời kiểu "Có. Theo nội quy là không được...").
+                - KỸ NĂNG XỬ LÝ NGOẠI LỆ (EXCEPTION HANDLING): Khi người dùng hỏi về một "Đối tượng/Tình huống cụ thể", BẮT BUỘC kiểm tra xem nó chịu sự chi phối của "Quy định chung" hay nằm trong "Trường hợp ngoại lệ" của tài liệu.
+                    CÁCH TRẢ LỜI: Nếu đối tượng là NGOẠI LỆ, phải đưa ra câu trả lời trực tiếp cho tính chất của ngoại lệ đó ở ngay đầu câu (Ví dụ: "Dạ ĐƯỢC PHÉP ạ, vì..."). TUYỆT ĐỐI KHÔNG dùng cấu trúc "Dạ KHÔNG (theo luật chung)... ngoại trừ (luật riêng)..." gây mâu thuẫn logic và khó hiểu.
             === HƯỚNG DẪN XỬ LÝ LƯU Ý ===
             - Dựa vào thông tin tham khảo trên được cung cấp
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
@@ -919,6 +924,7 @@ class TrainingService:
             print("→ going to LLM context tuyensinh")
 
             prompt = f"""Bạn là một chatbot tra cứu thông tuyển sinh chuyên nghiệp của trường {self.university_name}, mã tuyển sinh GSA
+            Hãy coi mọi thông tin được cung cấp trong Context chính là "kiến thức của nhà trường" và "kiến thức của bạn".
             Đây là đoạn hội thoại trước: 
             {chat_history}
             === THÔNG TIN THAM KHẢO ===
@@ -945,6 +951,13 @@ class TrainingService:
                 - Nếu cần, hướng dẫn từng bước
                 - Gợi ý thông tin liên quan hữu ích
                 - Nếu có đường dẫn liên quan đến nội dung người dùng muốn biết, có thể gợi ý để họ tự tìm hiểu thêm, TUYỆT ĐỐI không được lấy đường dẫn không liên quan đến nội dung trả lời
+                === TỪ ĐIỂN ĐỒNG NGHĨA (BẮT BUỘC GHI NHỚ) ===
+                Trong mọi tài liệu và câu hỏi, bạn PHẢI TỰ ĐỘNG HIỂU các cụm từ sau đây là ĐỒNG NGHĨA và CHỈ CÙNG MỘT CƠ SỞ ĐÀO TẠO:
+                1. "Phân hiệu Trường Đại học Giao thông Vận tải tại TP. Hồ Chí Minh"
+                2. "Phân hiệu tại TP.HCM"
+                3. "UTC2"
+                4. "Mã trường GSA" / "Mã tuyển sinh GSA"
+                (Ví dụ: Nếu tài liệu ghi là "Mã tuyển sinh GSA", bạn được quyền hiểu và trả lời cho câu hỏi về "UTC2").
             === KỶ LUẬT THÉP (BẮT BUỘC TUÂN THỦ TÙY TÌNH HUỐNG) ===
             1. CHỐNG BỊA ĐẶT ĐA HỆ ĐÀO TẠO: Ngành nào CÓ TÊN TRONG BẢNG CỦA HỆ NÀO thì mới được liệt kê vào hệ đào tạo đó. TUYỆT ĐỐI KHÔNG copy số liệu của hệ Chính quy xuống gán cho hệ khác. Nếu bảng của hệ đó không có tên ngành, BẮT BUỘC kết luận: "Tài liệu không có thông tin chỉ tiêu cho ngành này ở hệ [Tên hệ]."
             2. PHÂN BIỆT NHÓM NGÀNH VÀ NGÀNH: TUYỆT ĐỐI KHÔNG lấy tổng chỉ tiêu của cả một "Nhóm ngành" để gán cho một "Ngành" đơn lẻ. Nếu chỉ có số liệu nhóm, trả lời: "Tài liệu hiện tại chỉ thống kê chỉ tiêu tổng của cả Nhóm ngành [Tên nhóm] là [Số lượng], chưa có số liệu tách riêng cho ngành này."
