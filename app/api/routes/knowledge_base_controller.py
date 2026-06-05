@@ -16,6 +16,7 @@ from pathlib import Path
 import os
 import json
 import uuid
+import unicodedata
 from datetime import datetime
 from qdrant_client import models
 
@@ -47,6 +48,26 @@ MEDIA_TYPE_MAPPING = {
     ".png": "image/png",
     ".gif": "image/gif",
 }
+
+
+def _normalize_admin_search_text(value: Optional[str]) -> str:
+    normalized = unicodedata.normalize("NFD", value or "")
+    without_marks = "".join(
+        char for char in normalized if unicodedata.category(char) != "Mn"
+    )
+    return " ".join(
+        without_marks.replace("đ", "d").replace("Đ", "D").lower().split()
+    )
+
+
+def _matches_admin_search(search: Optional[str], *fields: Optional[str]) -> bool:
+    normalized_search = _normalize_admin_search_text(search)
+    if not normalized_search:
+        return True
+
+    return any(
+        normalized_search in _normalize_admin_search_text(field) for field in fields
+    )
 
 
 def check_leader_permission(current_user: entities.Users = Depends(get_current_user)):
@@ -539,6 +560,9 @@ def get_all_training_questions(
     is_private: Optional[bool] = Query(
         None, description="Filter by privacy: true for private, false for public"
     ),
+    search: Optional[str] = Query(
+        None, description="Search by question, answer, or intent name"
+    ),
     db: Session = Depends(get_db),
     current_user: entities.Users = Depends(check_view_permission),
 ):
@@ -567,6 +591,16 @@ def get_all_training_questions(
         )
 
     training_questions = query.all()
+    training_questions = [
+        tqa
+        for tqa in training_questions
+        if _matches_admin_search(
+            search,
+            tqa.question,
+            tqa.answer,
+            tqa.intent.intent_name if tqa.intent else None,
+        )
+    ]
 
     # Convert to response format
     result = []
@@ -603,6 +637,9 @@ def get_all_documents(
     ),
     is_private: Optional[bool] = Query(
         None, description="Filter by privacy: true for private, false for public"
+    ),
+    search: Optional[str] = Query(
+        None, description="Search by title, file path, category, or intent name"
     ),
     db: Session = Depends(get_db),
     current_user: entities.Users = Depends(check_view_permission),
@@ -659,6 +696,17 @@ def get_all_documents(
     finally:
         conn.invalidate()
         conn.close()
+    documents = [
+        doc
+        for doc in documents
+        if _matches_admin_search(
+            search,
+            doc.title,
+            doc.file_path,
+            doc.category,
+            doc.intent_name,
+        )
+    ]
 
     # Convert to response format
     result = []
