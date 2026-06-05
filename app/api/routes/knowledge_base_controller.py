@@ -1240,6 +1240,7 @@ def api_approve_document(
                                 "intent_name": intent.intent_name if intent else None,
                                 "type": "document",
                                 "is_private": bdoc.is_private or False,
+                                "file_name": bdoc.title or os.path.basename(bdoc.file_path),
                             },
                         )
                     ],

@@ -370,13 +370,64 @@ class TrainingService:
 
         NHIỆM VỤ:
         Viết lại câu hỏi mới nhất thành một câu truy vấn ĐỘC LẬP, ĐẦY ĐỦ NGỮ NGHĨA để máy tìm kiếm (Vector Search) có thể hiểu được chính xác mà không cần đọc lại lịch sử.
+        === TỪ ĐIỂN ĐỒNG NGHĨA BẮT BUỘC ===
+        Khi người dùng dùng các cụm từ sau, BẮT BUỘC mở rộng query để bao gồm các từ tương đương:
+        1. Nhân sự / Con người
+        - "cán bộ" / "cán bộ nhà trường" 
+        → bao gồm: viên chức, giảng viên, nhân viên, người lao động
+
+        - "giảng viên" 
+        → bao gồm: nhà giáo, giáo viên, giảng viên đại học, viên chức giảng dạy
+
+        - "nhân viên" 
+        → bao gồm: viên chức, người lao động, cán bộ hành chính
+
+        - "sinh viên" 
+        → bao gồm: người học, học viên, nghiên cứu sinh
+
+        - "hiệu trưởng"
+        → bao gồm: giám đốc phân hiệu, ban giám hiệu, lãnh đạo trường
+
+        - "trưởng khoa"
+        → bao gồm: lãnh đạo khoa, chủ nhiệm khoa, trưởng bộ môn, người đứng đầu đơn vị
+
+        2. Hành chính / Chế độ
+        - "nghỉ phép"
+        → bao gồm: nghỉ hằng năm, nghỉ hè, nghỉ việc riêng, chế độ nghỉ, nghỉ không hưởng lương, phép năm
+        - "lương"
+        → bao gồm: tiền lương, thu nhập, thù lao, hệ số lương, mức lương, phụ cấp, lương 3P
+        - "kỷ luật"
+        → bao gồm: xử lý kỷ luật, hình thức kỷ luật, khiển trách, cảnh cáo, buộc thôi việc, vi phạm
+        - "đánh giá viên chức"
+        → bao gồm: xếp loại, phân loại viên chức, đánh giá cuối năm, hoàn thành nhiệm vụ
+
+        3. Đào tạo / Học vụ
+
+
+        Ví dụ:
+        - "quy trình nghỉ phép đối với cán bộ" 
+        → rewrite: "chế độ nghỉ phép của viên chức giảng viên nhân viên"
+        - "lương của cán bộ" 
+        → rewrite: "chế độ tiền lương viên chức giảng viên người lao động"
         HƯỚNG DẪN:
         1. KHÔI PHỤC NGỮ CẢNH: Thay thế các đại từ (nó, trường này, ngành đó), câu rút gọn, hoặc chủ ngữ bị khuyết bằng các DANH TỪ RIÊNG cụ thể (tên trường, tên cơ sở, tên ngành, phương thức) ĐÃ XUẤT HIỆN trong hội thoại trước đó.
+        ĐẶC BIỆT: Các cụm "dẫn chứng này", "thông tin trên", "quy định đó", "điều vừa nói", 
+        "câu trả lời trước" → BẮT BUỘC tra lại lịch sử để tìm CHỦ ĐỀ CỤ THỂ đang được nhắc đến 
+        rồi thay thế vào.
+        
+        Ví dụ:
+        - Lịch sử: Bot vừa trả lời "kế hoạch nhiệm vụ năm học lưu trữ 20 năm theo quy định Bộ GDĐT"
+        - User hỏi: "dẫn chứng này nằm ở quy định nào, điều khoản nào"
+        - Rewrite thành: "Quy định về thời hạn lưu trữ kế hoạch nhiệm vụ năm học 20 năm 
+                            nằm ở văn bản pháp lý nào, điều khoản nào?"
         2. KHÔNG BỊA ĐẶT: TUYỆT ĐỐI KHÔNG thêm thông tin hoàn toàn mới chưa từng được nhắc đến. KHÔNG thay đổi mục tiêu câu hỏi.
         3. GIỮ NGUYÊN NẾU ĐÃ RÕ RÀNG: Nếu câu hỏi mới nhất đã tự mang đủ ngữ nghĩa độc lập, hãy trả về NGUYÊN VĂN.
         4. KẾT QUẢ ĐẦU RA: Chỉ in ra ĐÚNG 1 CÂU truy vấn tiếng Việt, TUYỆT ĐỐI KHÔNG giải thích, KHÔNG có dấu ngoặc kép bọc ngoài.
         5. CẤM GẮN NHÃN PHÂN HIỆU: TUYỆT ĐỐI KHÔNG tự động thêm các cụm từ "Phân hiệu", "UTC2", "mã GSA" vào câu truy vấn. vì các quy định này thường áp dụng chung cho Toàn trường Đại học GTVT. Chỉ cần viết lại câu hỏi rõ nghĩa là đủ (Ví dụ: "Trích xuất quy định về giờ nghiên cứu khoa học của giảng viên"). Chỉ giữ lại chữ UTC2 hoặc tên phân hiệu nếu chính người dùng chủ động gõ vào câu hỏi của họ.
         """
+        # THÊM LOG NÀY
+        print(f"[ENRICH] chat_history length={len(str(chat_history))}")
+        print(f"[ENRICH] chat_history preview={str(chat_history)[:300]}")
         # assume async predict exists
         enriched = await self.control_llm.ainvoke(prompt)
         print("==== RAW RESPONSE ====")
@@ -387,6 +438,9 @@ class TrainingService:
             self._message_text(enriched).strip().splitlines() if enriched else []
         )
         enriched_txt = enriched_lines[0] if enriched_lines else user_message
+        print("==== ENRICH QUERY ====")
+        print(enriched_txt)
+        print("======================")
         return enriched_txt
 
     async def enrich_query_tuyensinh(self, session_id: str, user_message: str) -> str:
@@ -406,7 +460,17 @@ class TrainingService:
         NHIỆM VỤ:
  
         HƯỚNG DẪN BẮT BUỘC:
+        HƯỚNG DẪN:
         1. KHÔI PHỤC NGỮ CẢNH: Thay thế các đại từ (nó, trường này, ngành đó), câu rút gọn, hoặc chủ ngữ bị khuyết bằng các DANH TỪ RIÊNG cụ thể (tên trường, tên cơ sở, tên ngành, phương thức) ĐÃ XUẤT HIỆN trong hội thoại trước đó.
+        ĐẶC BIỆT: Các cụm "dẫn chứng này", "thông tin trên", "quy định đó", "điều vừa nói", 
+        "câu trả lời trước" → BẮT BUỘC tra lại lịch sử để tìm CHỦ ĐỀ CỤ THỂ đang được nhắc đến 
+        rồi thay thế vào.
+        
+        Ví dụ:
+        - Lịch sử: Bot vừa trả lời "kế hoạch nhiệm vụ năm học lưu trữ 20 năm theo quy định Bộ GDĐT"
+        - User hỏi: "dẫn chứng này nằm ở quy định nào, điều khoản nào"
+        - Rewrite thành: "Quy định về thời hạn lưu trữ kế hoạch nhiệm vụ năm học 20 năm 
+                            nằm ở văn bản pháp lý nào, điều khoản nào?"
         2. KHÔNG BỊA ĐẶT: TUYỆT ĐỐI KHÔNG thêm thông tin hoàn toàn mới chưa từng được nhắc đến. KHÔNG thay đổi mục tiêu câu hỏi.
         3. GIỮ NGUYÊN NẾU ĐÃ RÕ RÀNG: Nếu câu hỏi mới nhất đã tự mang đủ ngữ nghĩa độc lập, hãy trả về NGUYÊN VĂN.
         4. KẾT QUẢ ĐẦU RA: Chỉ in ra ĐÚNG 1 CÂU truy vấn tiếng Việt, TUYỆT ĐỐI KHÔNG giải thích, KHÔNG có dấu ngoặc kép bọc ngoài.
@@ -1918,7 +1982,33 @@ class TrainingService:
             yield f"data: {json.dumps({'event': 'error', 'message': str(e)})}\n\n"
         finally:
             db.close()
+    def _get_char_splitter(self, content: str):
+        """
+        Trả về char_splitter với chunk_size phù hợp theo nội dung thực tế.
+        - Nhiều bảng (tuyển sinh): giữ chunk lớn để không mất context bảng
+        - Document ngắn (KTX, thông báo...): chunk nhỏ để signal không bị loãng
+        - Document trung bình: chunk vừa
+        """
+        table_count = content.count("| --- |")
+        total_chars = len(content)
 
+        if table_count >= 5:
+            # Tài liệu tuyển sinh nhiều bảng → giữ nguyên logic cũ
+            chunk_size, chunk_overlap = 12000, 1000
+        elif total_chars < 3000:
+            # Document ngắn: chia ~5 chunks, tối thiểu 300 ký tự/chunk
+            chunk_size = max(300, total_chars // 5)
+            chunk_overlap = 50
+        elif total_chars < 10000:
+            chunk_size, chunk_overlap = 1000, 100
+        else:
+            chunk_size, chunk_overlap = 3000, 200
+
+        return RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            separators=["\n\n", "\n", ".", ";", ",", " "],
+        )
     def _extract_and_chunk(self, doc, ext: str) -> tuple[list[str], bool]:
         """
         Extract content từ file và chunk có header-context.
@@ -1951,6 +2041,7 @@ class TrainingService:
             has_headings = any(
                 line.startswith("#") for line in markdown_content.splitlines()
             )
+            char_splitter = self._get_char_splitter(markdown_content)
             print(f"[DEBUG] has_headings={has_headings}")
 
             header_docs = header_splitter.split_text(markdown_content)
@@ -1974,6 +2065,8 @@ class TrainingService:
             has_headings = any(
                 line.startswith("#") for line in markdown_content.splitlines()
             )
+            char_splitter = self._get_char_splitter(markdown_content)
+            print(f"[DEBUG] chunk_size={char_splitter._chunk_size}")
             if has_headings:
                 return (
                     self._header_chunks(
@@ -1987,6 +2080,7 @@ class TrainingService:
         if ext == ".txt":
             content = file_bytes.decode("utf-8", errors="ignore")
             content = DocumentProcessor.clean_text(content)
+            char_splitter = self._get_char_splitter(content)
             return self._plain_chunks(content, char_splitter), False
 
         # Các định dạng còn lại (xlsx, xls, pptx, html)
@@ -2001,6 +2095,7 @@ class TrainingService:
             os.path.basename(doc.file_path),
             mime_map.get(ext, "text/plain"),
         )
+        char_splitter = self._get_char_splitter(content)
         return self._plain_chunks(content, char_splitter), False
 
     def _read_file_bytes(self, doc, ext: str) -> bytes:
@@ -2132,23 +2227,33 @@ class TrainingService:
 
             for sub in sub_chunks:
                 try:
-                    prompt = f"""Bạn là trợ lý phân tích tài liệu tuyển sinh đại học.
+                    prompt = f"""Bạn là trợ lý phân tích tài liệu của trường đại học.
 
-    Dưới đây là một đoạn trích từ tài liệu có chứa bảng dữ liệu:
-    ---
-    {sub}
-    ---
+                    Dưới đây là một đoạn trích từ tài liệu có chứa bảng dữ liệu:
+                    ---
+                    {sub}
+                    ---
 
-    Ngữ cảnh tài liệu:
-    {doc_context[:1500]}
+                    Ngữ cảnh tài liệu:
+                    {doc_context[:1500]}
 
-    Hãy viết một đoạn mô tả ngắn (3-5 câu) bằng tiếng Việt tóm tắt:
-        1. Bắt đầu bằng: "Bảng này thuộc [tên mục/section đầy đủ lấy từ dòng [...] trong đoạn trích], [hệ đào tạo], tại [địa điểm, mã trường]."
-        Lưu ý: tên mục/section chính xác được ghi trong dòng [...] ở đầu đoạn trích, hãy dùng đúng tên đó, không tự đặt lại.
-        2. Liệt kê TẤT CẢ tên ngành/chương trình xuất hiện trong đoạn bảng này (ghi rõ tên đầy đủ).
-        3. Nêu chỉ tiêu hoặc điểm chuẩn nổi bật nếu có.
+                    Hãy viết một đoạn mô tả ngắn (3-5 câu) bằng tiếng Việt giúp hệ thống tìm kiếm 
+                    nhận diện đúng nội dung bảng này. Mô tả cần:
 
-    Chỉ trả về đoạn mô tả, không giải thích thêm."""
+                    1. Bắt đầu bằng: "Bảng này thuộc [tên mục/section đầy đủ lấy từ dòng [...] 
+                    trong đoạn trích], áp dụng cho [đối tượng], tại [địa điểm/đơn vị nếu có]."
+                    Lưu ý: dùng đúng tên section trong dòng [...], không tự đặt lại.
+
+                    2. Tóm tắt NỘI DUNG CHÍNH của bảng — liệt kê các cột/trường thông tin quan trọng 
+                    và các giá trị nổi bật (ví dụ: thời hạn, mức tiền, tên ngành, chức danh, 
+                    số lượng, điểm số... tùy loại bảng).
+
+                    3. Nêu 1-2 thông tin cụ thể quan trọng nhất trong bảng 
+                    (con số, mốc thời gian, tên đơn vị...) để giúp tìm kiếm chính xác hơn.
+
+                    TUYỆT ĐỐI KHÔNG nhận xét về thông tin bị thiếu hay không có trong bảng.
+                    Chỉ mô tả những gì THỰC SỰ CÓ trong đoạn trích.
+                    Chỉ trả về đoạn mô tả, không giải thích thêm."""
 
                     response = self.llm.invoke(prompt)
                     description = (
@@ -2610,7 +2715,7 @@ class TrainingService:
                 collection_name=self.documents_collection,
                 query_vector=query_embedding,
                 limit=top_k,
-                score_threshold=0.5,
+                
                 query_filter={"must": must_conditions},
             )
 

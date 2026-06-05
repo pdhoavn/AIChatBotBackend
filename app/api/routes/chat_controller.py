@@ -449,7 +449,7 @@ async def stream_chat(
             )
         else:
             enriched_query = await sse_service.enrich_query(session_id, message)
-        _chat_log(f"enriched_query={enriched_query}", trace_id)
+      
 
         if not enriched_query:
             _chat_log("skip_rag: empty_enriched_query", trace_id)
@@ -592,7 +592,11 @@ async def stream_chat(
             # Nếu chunk sạch (hoặc không dính điều kiện trên), thêm vào danh sách
             clean_context_chunks.append(r)
         context_chunks = clean_context_chunks
-        context = "\n\n".join([r.payload.get("chunk_text", "") for r in context_chunks])
+        context = "\n\n".join([f"[Nguồn: {r.payload.get('file_name', '')}]\n{r.payload.get('chunk_text', '')}"
+            if r.payload.get('file_name')
+            else r.payload.get('chunk_text', '')
+            for r in context_chunks
+        ])
         _chat_log(
             f"context_precheck chunks={len(context_chunks)} chars={len(context)} intent_id={intent_id}",
             trace_id,
