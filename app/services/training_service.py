@@ -388,21 +388,68 @@ class TrainingService:
         - "hiệu trưởng"
         → bao gồm: giám đốc phân hiệu, ban giám hiệu, lãnh đạo trường
 
-        - "trưởng khoa"
-        → bao gồm: lãnh đạo khoa, chủ nhiệm khoa, trưởng bộ môn, người đứng đầu đơn vị
+        - "trưởng khoa" / "phó trưởng khoa" / "lãnh đạo khoa"
+        → bao gồm: ban lãnh đạo khoa, chủ nhiệm khoa, 
+                người đứng đầu khoa
+        → KHÔNG bao gồm: trưởng bộ môn, phó trưởng bộ môn
+        (đây là cấp thấp hơn, chỉ tìm khi được hỏi trực tiếp)
 
         2. Hành chính / Chế độ
         - "nghỉ phép"
         → bao gồm: nghỉ hằng năm, nghỉ hè, nghỉ việc riêng, chế độ nghỉ, nghỉ không hưởng lương, phép năm
+
         - "lương"
         → bao gồm: tiền lương, thu nhập, thù lao, hệ số lương, mức lương, phụ cấp, lương 3P
+
         - "kỷ luật"
         → bao gồm: xử lý kỷ luật, hình thức kỷ luật, khiển trách, cảnh cáo, buộc thôi việc, vi phạm
+
         - "đánh giá viên chức"
         → bao gồm: xếp loại, phân loại viên chức, đánh giá cuối năm, hoàn thành nhiệm vụ
 
         3. Đào tạo / Học vụ
+        - "học phí"
+        → bao gồm: mức học phí, phí đào tạo, chi phí học tập, học phí tín chỉ, lệ 
+        
+        - "thời khóa biểu"
+        → bao gồm: TKB, lịch học, kế hoạch giảng dạy, thời gian biểu, lịch dạy
 
+        - "điểm thi"
+        → bao gồm: kết quả học tập, điểm số, điểm học phần, bảng điểm, điểm tổng kết
+
+        - "nghỉ học"
+        → bao gồm: bảo lưu, nghỉ học tạm thời, tạm dừng học, hoãn học
+
+        - "ra trường"
+        → bao gồm: tốt nghiệp, xét tốt nghiệp, công nhận tốt nghiệp, nhận bằng, hoàn thành chương trình
+
+        - "chương trình đào tạo"
+        → bao gồm: CTĐT, giáo trình, khung chương trình, chuẩn đầu ra, học phần, tín chỉ
+
+        - "tiếng anh" / "ngoại ngữ" / "anh văn"
+        → bao gồm: chứng chỉ ngoại ngữ, chuẩn đầu ra ngoại ngữ, điều kiện ngoại ngữ, năng lực ngoại ngữ, TOEIC, IELTS, TOEFL, B1, B2, A2, khung năng lực ngoại ngữ 6 bậc, CEFR, chứng chỉ tiếng Anh, tiếng Anh đầu ra
+
+        - "chuẩn đầu ra" / "điều kiện tốt nghiệp" / "điều kiện ra trường"
+        → bao gồm: chuẩn đầu ra ngoại ngữ, chuẩn đầu ra tin học, điều kiện xét tốt nghiệp, yêu cầu tốt nghiệp, chứng chỉ bắt buộc, chứng chỉ đầu ra
+
+        - "đồ án" / "luận văn" / "khóa luận"
+        → bao gồm: đồ án tốt nghiệp, luận văn tốt nghiệp, đề tài tốt nghiệp, bảo vệ đồ án, hội đồng chấm đồ án
+        4. Đơn vị / Tổ chức
+        - "phòng ban"
+        → bao gồm: đơn vị, bộ phận, khoa, bộ môn, trung tâm, ban
+
+        - "ký túc xá"
+        → bao gồm: KTX, nội trú, chỗ ở sinh viên, khu nội trú, nhà ở sinh viên, phòng kí túc xá
+
+        5. Văn bản / Quy định
+        - "quy định"
+        → bao gồm: quy chế, nội quy, điều lệ, quy trình, hướng dẫn, thông tư, nghị định
+
+        - "hồ sơ"
+        → bao gồm: giấy tờ, tài liệu, đơn, văn bản, minh chứng, chứng từ
+
+        - "xin / đăng ký"
+        → bao gồm: nộp đơn, đề nghị, làm thủ tục, đăng ký, nộp hồ sơ
 
         Ví dụ:
         - "quy trình nghỉ phép đối với cán bộ" 
@@ -458,8 +505,89 @@ class TrainingService:
         "{user_message}"
 
         NHIỆM VỤ:
- 
-        HƯỚNG DẪN BẮT BUỘC:
+        === TỪ ĐIỂN ĐỒNG NGHĨA BẮT BUỘC ===
+        Khi người dùng dùng các cụm từ sau, BẮT BUỘC mở rộng query để bao gồm các từ tương đương:
+        1. Nhân sự / Con người
+        - "cán bộ" / "cán bộ nhà trường" 
+        → bao gồm: viên chức, giảng viên, nhân viên, người lao động
+
+        - "giảng viên" 
+        → bao gồm: nhà giáo, giáo viên, giảng viên đại học, viên chức giảng dạy
+
+        - "nhân viên" 
+        → bao gồm: viên chức, người lao động, cán bộ hành chính
+
+        - "sinh viên" 
+        → bao gồm: người học, học viên, nghiên cứu sinh
+
+        - "hiệu trưởng"
+        → bao gồm: giám đốc phân hiệu, ban giám hiệu, lãnh đạo trường
+
+        - "trưởng khoa"
+        → bao gồm: lãnh đạo khoa, chủ nhiệm khoa, trưởng bộ môn, người đứng đầu đơn vị
+
+        2. Hành chính / Chế độ
+        - "nghỉ phép"
+        → bao gồm: nghỉ hằng năm, nghỉ hè, nghỉ việc riêng, chế độ nghỉ, nghỉ không hưởng lương, phép năm
+
+        - "lương"
+        → bao gồm: tiền lương, thu nhập, thù lao, hệ số lương, mức lương, phụ cấp, lương 3P
+
+        - "kỷ luật"
+        → bao gồm: xử lý kỷ luật, hình thức kỷ luật, khiển trách, cảnh cáo, buộc thôi việc, vi phạm
+
+        - "đánh giá viên chức"
+        → bao gồm: xếp loại, phân loại viên chức, đánh giá cuối năm, hoàn thành nhiệm vụ
+
+        3. Đào tạo / Học vụ
+        - "học phí"
+        → bao gồm: mức học phí, phí đào tạo, chi phí học tập, học phí tín chỉ, lệ 
+        
+        - "thời khóa biểu"
+        → bao gồm: TKB, lịch học, kế hoạch giảng dạy, thời gian biểu, lịch dạy
+
+        - "điểm thi"
+        → bao gồm: kết quả học tập, điểm số, điểm học phần, bảng điểm, điểm tổng kết
+
+        - "nghỉ học"
+        → bao gồm: bảo lưu, nghỉ học tạm thời, tạm dừng học, hoãn học
+
+        - "ra trường"
+        → bao gồm: tốt nghiệp, xét tốt nghiệp, công nhận tốt nghiệp, nhận bằng, hoàn thành chương trình
+
+        - "chương trình đào tạo"
+        → bao gồm: CTĐT, giáo trình, khung chương trình, chuẩn đầu ra, học phần, tín chỉ
+
+        - "tiếng anh" / "ngoại ngữ" / "anh văn"
+        → bao gồm: chứng chỉ ngoại ngữ, chuẩn đầu ra ngoại ngữ, điều kiện ngoại ngữ, năng lực ngoại ngữ, TOEIC, IELTS, TOEFL, B1, B2, A2, khung năng lực ngoại ngữ 6 bậc, CEFR, chứng chỉ tiếng Anh, tiếng Anh đầu ra
+
+        - "chuẩn đầu ra" / "điều kiện tốt nghiệp" / "điều kiện ra trường"
+        → bao gồm: chuẩn đầu ra ngoại ngữ, chuẩn đầu ra tin học, điều kiện xét tốt nghiệp, yêu cầu tốt nghiệp, chứng chỉ bắt buộc, chứng chỉ đầu ra
+
+        - "đồ án" / "luận văn" / "khóa luận"
+        → bao gồm: đồ án tốt nghiệp, luận văn tốt nghiệp, đề tài tốt nghiệp, bảo vệ đồ án, hội đồng chấm đồ án
+        4. Đơn vị / Tổ chức
+        - "phòng ban"
+        → bao gồm: đơn vị, bộ phận, khoa, bộ môn, trung tâm, ban
+
+        - "ký túc xá"
+        → bao gồm: KTX, nội trú, chỗ ở sinh viên, khu nội trú, nhà ở sinh viên, phòng kí túc xá
+
+        5. Văn bản / Quy định
+        - "quy định"
+        → bao gồm: quy chế, nội quy, điều lệ, quy trình, hướng dẫn, thông tư, nghị định
+
+        - "hồ sơ"
+        → bao gồm: giấy tờ, tài liệu, đơn, văn bản, minh chứng, chứng từ
+
+        - "xin / đăng ký"
+        → bao gồm: nộp đơn, đề nghị, làm thủ tục, đăng ký, nộp hồ sơ
+
+        Ví dụ:
+        - "quy trình nghỉ phép đối với cán bộ" 
+        → rewrite: "chế độ nghỉ phép của viên chức giảng viên nhân viên"
+        - "lương của cán bộ" 
+        → rewrite: "chế độ tiền lương viên chức giảng viên người lao động"
         HƯỚNG DẪN:
         1. KHÔI PHỤC NGỮ CẢNH: Thay thế các đại từ (nó, trường này, ngành đó), câu rút gọn, hoặc chủ ngữ bị khuyết bằng các DANH TỪ RIÊNG cụ thể (tên trường, tên cơ sở, tên ngành, phương thức) ĐÃ XUẤT HIỆN trong hội thoại trước đó.
         ĐẶC BIỆT: Các cụm "dẫn chứng này", "thông tin trên", "quy định đó", "điều vừa nói", 
@@ -886,6 +1014,28 @@ class TrainingService:
                 + LỆNH CẤM: TUYỆT ĐỐI KHÔNG dùng từ "Có" ở đầu câu như một từ đệm giao tiếp nếu nội dung thực tế phía sau mang ý nghĩa phủ định (Ví dụ: Cấm trả lời kiểu "Có. Theo nội quy là không được...").
                 - KỸ NĂNG XỬ LÝ NGOẠI LỆ (EXCEPTION HANDLING): Khi người dùng hỏi về một "Đối tượng/Tình huống cụ thể", BẮT BUỘC kiểm tra xem nó chịu sự chi phối của "Quy định chung" hay nằm trong "Trường hợp ngoại lệ" của tài liệu.
                     CÁCH TRẢ LỜI: Nếu đối tượng là NGOẠI LỆ, phải đưa ra câu trả lời trực tiếp cho tính chất của ngoại lệ đó ở ngay đầu câu (Ví dụ: "Dạ ĐƯỢC PHÉP ạ, vì..."). TUYỆT ĐỐI KHÔNG dùng cấu trúc "Dạ KHÔNG (theo luật chung)... ngoại trừ (luật riêng)..." gây mâu thuẫn logic và khó hiểu.
+            6. - QUY TẮC KHÔNG BỎ SÓT KHI LIỆT KÊ:
+                + Với BẤT KỲ câu hỏi nào (nhân sự, ngành học, phòng ban, chính sách...),
+                nếu trong context có NHIỀU ĐỐI TƯỢNG thỏa mãn câu hỏi, BẮT BUỘC 
+                liệt kê ĐẦY ĐỦ TẤT CẢ, không dừng lại ở kết quả đầu tiên tìm được.
+                + Trước khi trả lời, BẮT BUỘC tự hỏi: "Trong context còn đối tượng nào 
+                khác thỏa mãn câu hỏi này không?" — nếu CÓ thì phải đưa vào câu trả lời.
+                + LỆNH CẤM: TUYỆT ĐỐI KHÔNG dừng lại ở kết quả đầu tiên chỉ vì "nghe 
+                có vẻ đủ rồi". Thiếu sót trong liệt kê là sai, dù chỉ bỏ một đối tượng.
+            7. - QUY TẮC PHÂN BIỆT NGUỒN KHI CONTEXT CÓ NHIỀU ĐỐI TƯỢNG CÙNG LOẠI:
+                + Khi câu hỏi hỏi về một ĐỐI TƯỢNG CỤ THỂ được nêu tên (VD: một khoa,
+                một phòng ban, một người, một ngành...), BẮT BUỘC chỉ sử dụng thông 
+                tin từ chunk có TÊN ĐỐI TƯỢNG KHỚP CHÍNH XÁC với câu hỏi.
+                + Nếu context chứa nhiều chunk từ nhiều đối tượng khác nhau cùng loại
+                (VD: nhiều khoa, nhiều phòng ban), TUYỆT ĐỐI KHÔNG lấy thông tin từ 
+                chunk của đối tượng không được hỏi đến, dù cấu trúc hay chức danh 
+                có giống nhau.
+                + Trước khi trả lời, BẮT BUỘC tự kiểm tra: "Chunk này có nhắc đến tên 
+                đối tượng được hỏi không?" — Nếu KHÔNG → bỏ qua chunk đó.
+            8. - QUY TẮC PHÂN BIỆT CẤP CHỨC VỤ:
+                + "Trưởng/Phó Trưởng KHOA" ≠ "Trưởng/Phó Trưởng BỘ MÔN".
+                + TUYỆT ĐỐI KHÔNG nhầm lẫn hoặc gộp 2 cấp này vào chung một danh 
+                sách lãnh đạo khoa. Chỉ liệt kê đúng cấp được hỏi.
             === HƯỚNG DẪN XỬ LÝ LƯU Ý ===
             - Dựa vào thông tin tham khảo trên được cung cấp
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.

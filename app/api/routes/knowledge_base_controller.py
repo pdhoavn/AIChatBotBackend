@@ -1188,7 +1188,7 @@ def api_approve_document(
                 doc_context = "\n".join(c for c in chunks[:5] if "| --- |" not in c)[
                     :1500
                 ]
-                chunks = service._enrich_table_chunks(chunks, doc_context)
+                # chunks = service._enrich_table_chunks(chunks, doc_context)
                 print(f"DEBUG ENRICH: Enrich xong, tổng {len(chunks)} chunks.")
             except Exception as e:
                 btask.status = "failed"
