@@ -42,9 +42,9 @@ from app.utils.document_processor import DocumentProcessor
 
 memory_service = MemoryManager()
 load_dotenv()
-print("Đang nạp mô hình Reranker lên RAM, vui lòng đợi vài giây...")
-RERANKER_MODEL = CrossEncoder("BAAI/bge-reranker-base", max_length=512)
-print("Nạp mô hình thành công! Server sẵn sàng.")
+# print("Đang nạp mô hình Reranker lên RAM, vui lòng đợi vài giây...")
+# RERANKER_MODEL = CrossEncoder("BAAI/bge-reranker-base", max_length=512)
+# print("Nạp mô hình thành công! Server sẵn sàng.")
 
 
 class TrainingService:
@@ -469,8 +469,11 @@ class TrainingService:
                             nằm ở văn bản pháp lý nào, điều khoản nào?"
         2. KHÔNG BỊA ĐẶT: TUYỆT ĐỐI KHÔNG thêm thông tin hoàn toàn mới chưa từng được nhắc đến. KHÔNG thay đổi mục tiêu câu hỏi.
         3. GIỮ NGUYÊN NẾU ĐÃ RÕ RÀNG: Nếu câu hỏi mới nhất đã tự mang đủ ngữ nghĩa độc lập, hãy trả về NGUYÊN VĂN.
-        4. KẾT QUẢ ĐẦU RA: Chỉ in ra ĐÚNG 1 CÂU truy vấn tiếng Việt, TUYỆT ĐỐI KHÔNG giải thích, KHÔNG có dấu ngoặc kép bọc ngoài.
-        5. CẤM GẮN NHÃN PHÂN HIỆU: TUYỆT ĐỐI KHÔNG tự động thêm các cụm từ "Phân hiệu", "UTC2", "mã GSA" vào câu truy vấn. vì các quy định này thường áp dụng chung cho Toàn trường Đại học GTVT. Chỉ cần viết lại câu hỏi rõ nghĩa là đủ (Ví dụ: "Trích xuất quy định về giờ nghiên cứu khoa học của giảng viên"). Chỉ giữ lại chữ UTC2 hoặc tên phân hiệu nếu chính người dùng chủ động gõ vào câu hỏi của họ.
+        4. NẾU người dùng hỏi về các chủ đề: "quy chế, chế độ, mức chi, tiền thưởng, phúc lợi, học phí...", BẮT BUỘC phải tự động bổ sung thêm các cụm từ sau vào câu hỏi được viết lại: "quy định chi tiết, mức chi cụ thể, cách tính toán, điều khoản áp dụng".
+        5. KẾT QUẢ ĐẦU RA: Chỉ in ra ĐÚNG 1 CÂU truy vấn tiếng Việt, TUYỆT ĐỐI KHÔNG giải thích, KHÔNG có dấu ngoặc kép bọc ngoài.
+        6. QUY TẮC BẢO TOÀN TỪ KHÓA ĐỊA LÝ (CỰC KỲ QUAN TRỌNG):
+            - NẾU câu hỏi gốc của người dùng CÓ chứa các từ khóa chỉ địa điểm (như "Phân hiệu", "UTC2", "TP.HCM", "Cơ sở chính", "Hà Nội"): BẮT BUỘC phải giữ lại và đưa các từ khóa này vào câu query viết lại. (Ví dụ: User hỏi "chấm thi ở phân hiệu" -> Query: "Quy định chấm thi kết thúc học phần tại Phân hiệu").
+            - NẾU câu hỏi gốc KHÔNG nhắc đến địa điểm: TUYỆT ĐỐI KHÔNG tự ý suy diễn hay thêm các từ "Phân hiệu", "UTC2", "mã GSA" vào câu query. Hãy viết lại câu hỏi ở dạng chung cho toàn trường. (Ví dụ: User hỏi "giờ NCKH là bao nhiêu" -> Query: "Quy định về định mức giờ nghiên cứu khoa học của giảng viên").
         """
         # THÊM LOG NÀY
         print(f"[ENRICH] chat_history length={len(str(chat_history))}")
@@ -1054,7 +1057,6 @@ class TrainingService:
                 mà người dùng có thể quan tâm tiếp theo (điểm chuẩn, học bổng, 
                 chuyên ngành, học phí...). Thay đổi gợi ý theo ngữ cảnh câu hỏi, 
                 không lặp lại cùng một câu mẫu.
-            - Nếu context không có data phù hợp để trả lời người dùng thì cuối câu kèm theo [[user/setaudience]]
             """
             full_response = ""
             async for chunk in self.answer_llm.astream(prompt):
@@ -2304,6 +2306,108 @@ class TrainingService:
         """Chunk plain text — dùng cho TXT, OCR, xlsx, pptx..."""
         return [c for c in char_splitter.split_text(content) if c.strip()]
 
+    def _restructure_personnel_blocks(
+    self, chunks: list[str], unit_name: str
+) -> list[str]:
+        """
+        Post-process chunks sau khi split:
+        - Detect block nhân sự bị merge cột
+        - Restructure thành text rõ ràng từng người
+        - Các chunk không phải nhân sự: giữ nguyên
+        """
+        return [
+            self._try_restructure_chunk(chunk, unit_name) 
+            for chunk in chunks
+        ]
+
+    def _try_restructure_chunk(self, chunk: str, unit_name: str) -> str:
+        """
+        Thử restructure một chunk.
+        Nếu không nhận diện được pattern → trả về nguyên bản.
+        """
+        if self._is_personnel_block(chunk):
+            return self._restructure_personnel(chunk, unit_name)
+        # Thêm các loại khác tại đây trong tương lai:
+        # if self._is_schedule_block(chunk):
+        #     return self._restructure_schedule(chunk)
+        return chunk
+
+    # ============================================================
+    # PERSONNEL BLOCK
+    # ============================================================
+
+    TITLE_PATTERN = re.compile(
+        r'^(GS|PGS|TS|ThS|Ths|ThS\.NCS|Ths\.NCS|KS|CN|NCS)\.?\s+\S',
+        re.MULTILINE
+    )
+
+    def _restructure_personnel(self, raw: str, unit_name: str) -> str:
+        print(f"[DEBUG RESTRUCTURE INPUT]\n{repr(raw[:500])}")
+        lines = [l.strip() for l in raw.splitlines() if l.strip()]
+        print(f"[DEBUG LINES] {lines[:10]}")
+
+        tokens = []
+        for line in lines:
+            if self.TITLE_PATTERN.match(line):
+                tokens.append(('name', line))
+            else:
+                # KHÔNG split ' | ' ở đây — giữ nguyên cả dòng làm 1 role
+                tokens.append(('role', line))
+
+        persons = []
+        i = 0
+        while i < len(tokens):
+            if tokens[i][0] == 'name':
+                names = []
+                while i < len(tokens) and tokens[i][0] == 'name':
+                    names.append({'name': tokens[i][1], 'roles': []})
+                    i += 1
+
+                n = len(names)
+                role_idx = 0
+                while i < len(tokens) and tokens[i][0] == 'role':
+                    role_val = tokens[i][1]
+
+                    # Heuristic: role quá ngắn (< 4 ký tự) và không có động từ/danh từ chức vụ
+                    # → gắn vào tên của person trước
+                    if (
+                        len(role_val) < 5
+                        and not any(kw in role_val for kw in [
+                            'viên', 'trưởng', 'phó', 'giám', 'ban', 'phòng'
+                        ])
+                        and role_idx < n  # chỉ check khi chưa qua vòng đầu
+                    ):
+                        names[role_idx % n]['name'] += ' ' + role_val
+                    else:
+                        names[role_idx % n]['roles'].append(role_val)
+                        role_idx += 1
+
+                    i += 1
+
+                persons.extend(names)
+            else:
+                i += 1
+
+        if not persons:
+            return raw
+
+        out = []
+        for p in persons:
+            roles = [r for r in p['roles'] if r]
+            parts = [p['name']] + roles
+            out.append(' | '.join(parts))
+
+        return '\n'.join(out)
+
+    def _is_personnel_block(self, text: str) -> bool:
+        """
+        Heuristic: có ít nhất 3 tên người → khả năng cao là bảng nhân sự.
+        Tránh false positive với văn bản thường nhắc đến 1-2 người.
+        """
+        matches = self.TITLE_PATTERN.findall(text)
+        print(f"[DEBUG IS_PERSONNEL] matches={matches} count={len(matches)}")
+        return len(matches) >= 3
+    
     def _split_large_table(self, chunk: str, max_rows: int = 10) -> list[str]:
         """
         Nếu chunk chứa bảng có quá nhiều dòng dữ liệu,

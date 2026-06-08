@@ -1181,6 +1181,7 @@ def api_approve_document(
                 chunks, use_header_split = service._extract_and_chunk(bdoc, ext)
                 # In ra để xem chunk thực tế có to như cấu hình không
                 print(f"DEBUG CHUNKING: Tổng số {len(chunks)} chunks được tạo.")
+                chunks = service._restructure_personnel_blocks(chunks, bdoc.title)
                 if chunks:
                     print(
                         f"DEBUG CHUNKING: Độ dài chunk đầu tiên: {len(chunks[0])} ký tự."
