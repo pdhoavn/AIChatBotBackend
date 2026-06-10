@@ -424,7 +424,13 @@ async def stream_chat(
             iter([_sse_event({"event": "error", "message": "Message is empty"})]),
             media_type="text/event-stream",
         )
-
+    if audience_id != 4:
+            check_admission = await service.llm_admission_check(message)
+            if check_admission:
+                audience_id = 4
+                check_listing = await service.llm_listing_check(message)
+                if check_listing:
+                    top_k = 20
     # Tạo session nếu chưa có hoặc không tồn tại trong DB
     if not session_id:
         session_id = sse_service.create_chat_session(user_id, "chatbot")
@@ -440,10 +446,10 @@ async def stream_chat(
             f"[SSE] incoming_message session_id={session_id} user_id={user_id} message_len={len(message)}",
             trace_id,
         )
-
+        
         # --- enrich_query ---
         if audience_id == 4:
-            top_k = 20
+            # top_k = 10
             enriched_query = await sse_service.enrich_query_tuyensinh(
                 session_id, message
             )
@@ -603,14 +609,14 @@ async def stream_chat(
         )
 
         tier_check_start = time.perf_counter()
-        tier_source = await sse_service.llm_document_recommendation_check(
-            enriched_query, context
-        )
-        tier_check_elapsed_ms = int((time.perf_counter() - tier_check_start) * 1000)
-        _chat_log(
-            f"llm_document_recommendation_check result={tier_source} elapsed_ms={tier_check_elapsed_ms}",
-            trace_id,
-        )
+        # tier_source = await sse_service.llm_document_recommendation_check(
+        #     enriched_query, context
+        # )
+        # tier_check_elapsed_ms = int((time.perf_counter() - tier_check_start) * 1000)
+        # _chat_log(
+        #     f"llm_document_recommendation_check result={tier_source} elapsed_ms={tier_check_elapsed_ms}",
+        #     trace_id,
+        # )
 
         # === TIER 2: document ===
         if (

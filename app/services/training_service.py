@@ -358,14 +358,14 @@ class TrainingService:
         memory = memory_service.get_memory(session_id)
         mem_vars = memory.load_memory_variables({})
         chat_history = mem_vars.get("chat_history", "")
-
+        print(f"lich su chat: {chat_history}")
         prompt = f"""
-        Bạn là một trợ lý chuẩn hóa truy vấn cho chatbot RAG tư vấn tuyển sinh của {self.university_name}.
+        Nhiệm vụ của bạn là VIẾT LẠI câu hỏi mới nhất của người dùng thành một truy vấn ĐỘC LẬP, NGẮN GỌN và ĐẦY ĐỦ NGỮ NGHĨA để tra cứu trong Vector Database.
 
         Cuộc hội thoại gần đây:
         {chat_history}
 
-        Phản hồi mới nhất của người dùng:
+        Câu hỏi phản hồi mới nhất của người dùng:
         "{user_message}"
 
         NHIỆM VỤ:
@@ -467,13 +467,25 @@ class TrainingService:
         - User hỏi: "dẫn chứng này nằm ở quy định nào, điều khoản nào"
         - Rewrite thành: "Quy định về thời hạn lưu trữ kế hoạch nhiệm vụ năm học 20 năm 
                             nằm ở văn bản pháp lý nào, điều khoản nào?"
+        
         2. KHÔNG BỊA ĐẶT: TUYỆT ĐỐI KHÔNG thêm thông tin hoàn toàn mới chưa từng được nhắc đến. KHÔNG thay đổi mục tiêu câu hỏi.
         3. GIỮ NGUYÊN NẾU ĐÃ RÕ RÀNG: Nếu câu hỏi mới nhất đã tự mang đủ ngữ nghĩa độc lập, hãy trả về NGUYÊN VĂN.
-        4. NẾU người dùng hỏi về các chủ đề: "quy chế, chế độ, mức chi, tiền thưởng, phúc lợi, học phí...", BẮT BUỘC phải tự động bổ sung thêm các cụm từ sau vào câu hỏi được viết lại: "quy định chi tiết, mức chi cụ thể, cách tính toán, điều khoản áp dụng".
-        5. KẾT QUẢ ĐẦU RA: Chỉ in ra ĐÚNG 1 CÂU truy vấn tiếng Việt, TUYỆT ĐỐI KHÔNG giải thích, KHÔNG có dấu ngoặc kép bọc ngoài.
-        6. QUY TẮC BẢO TOÀN TỪ KHÓA ĐỊA LÝ (CỰC KỲ QUAN TRỌNG):
-            - NẾU câu hỏi gốc của người dùng CÓ chứa các từ khóa chỉ địa điểm (như "Phân hiệu", "UTC2", "TP.HCM", "Cơ sở chính", "Hà Nội"): BẮT BUỘC phải giữ lại và đưa các từ khóa này vào câu query viết lại. (Ví dụ: User hỏi "chấm thi ở phân hiệu" -> Query: "Quy định chấm thi kết thúc học phần tại Phân hiệu").
-            - NẾU câu hỏi gốc KHÔNG nhắc đến địa điểm: TUYỆT ĐỐI KHÔNG tự ý suy diễn hay thêm các từ "Phân hiệu", "UTC2", "mã GSA" vào câu query. Hãy viết lại câu hỏi ở dạng chung cho toàn trường. (Ví dụ: User hỏi "giờ NCKH là bao nhiêu" -> Query: "Quy định về định mức giờ nghiên cứu khoa học của giảng viên").
+        4. KẾT QUẢ ĐẦU RA: Chỉ in ra ĐÚNG 1 CÂU truy vấn tiếng Việt, TUYỆT ĐỐI KHÔNG giải thích, KHÔNG có dấu ngoặc kép bọc ngoài.
+        5. QUY TẮC BẢO TOÀN TỪ KHÓA CƠ SỞ (CỰC KỲ QUAN TRỌNG):
+            - NẾU Câu hỏi phản hồi mới nhất của người dùng CÓ chứa các từ khóa chỉ cơ sở (như "Phân hiệu", "UTC2", "TP.HCM", "Cơ sở chính", "Hà Nội"): BẮT BUỘC phải giữ lại y chang các từ khóa này cuối câu query.
+            - NẾU câu hỏi gốc KHÔNG nhắc đến cơ sở nào: TUYỆT ĐỐI KHÔNG tự ý suy diễn hay thêm các từ "Phân hiệu", "UTC2", "mã GSA" vào câu query.
+        6. QUY TẮC BẢO TOÀN TÊN VĂN BẢN:
+            - NẾU câu hỏi gốc chứa mã/tên văn bản (như "QĐ1821", "Thông tư 08", "Quy chế đào tạo"):
+            CHỈ giữ nguyên mã/tên đó. TUYỆT ĐỐI KHÔNG suy diễn nội dung, phạm vi áp dụng,
+            tên đầy đủ, hay đơn vị ban hành của văn bản đó — dù bot đã đề cập đến văn bản
+            này ở các lượt trả lời trước.
+            - Ví dụ SAI: "QĐ1821" → "Quyết định 1821 về cơ sở vật chất của UTC2"
+            - Ví dụ ĐÚNG: "QĐ1821" → giữ nguyên "QĐ1821"
+        7. NẾU câu hỏi của người dùng là hỏi về thân phận, chức vụ của một người (Ví dụ: "Đặng Văn Ơn là ai?", "ThS Đặng Văn Ơn làm gì?"):
+            BẮT BUỘC phải bọc tên người đó trong dấu ngoặc kép kép "".
+            BẮT BUỘC bổ sung thêm các cụm từ: chức vụ, phòng ban
+            Ví dụ: > - User hỏi: "ông đặng văn ơn có chức vụ gì"
+            Bạn phải sinh ra Query: Tìm chức vụ, đơn vị công tác và phòng ban của "Đặng Văn Ơn"
         """
         # THÊM LOG NÀY
         print(f"[ENRICH] chat_history length={len(str(chat_history))}")
@@ -610,20 +622,30 @@ class TrainingService:
             + TRƯỜNG HỢP 2 (Dữ liệu dùng chung): NẾU câu hỏi liên quan đến QUY TRÌNH & THỦ TỤC (Ví dụ: Hồ sơ, Giấy tờ, Các bước nộp, Lệ phí, Tiêu chuẩn cộng điểm, Học phí, Ký túc xá, Quy chế). -> BẮT BUỘC GIỮ NGUYÊN câu hỏi gốc (TUYỆT ĐỐI KHÔNG thêm GSA hay Phân hiệu).
             + TRƯỜNG HỢP NGOẠI LỆ: Nếu câu hỏi quá ngắn hoặc không rõ thuộc trường hợp nào, hãy GIỮ NGUYÊN câu hỏi gốc để đảm bảo an toàn.
         7. MẶC ĐỊNH HỆ ĐÀO TẠO: Nếu người dùng hỏi chung chung về tuyển sinh, điểm chuẩn, tiêu chí, xét học bạ... mà KHÔNG nhắc đến hệ đào tạo nào, BẮT BUỘC bổ sung cụm từ "Hệ Đại học Chính quy" vào câu truy vấn.
-        3. DỊCH THUẬT NGỮ TUYỂN SINH (Rất quan trọng):
+        8. DỊCH THUẬT NGỮ TUYỂN SINH (Rất quan trọng):
             - Nhắc đến "học bạ" hoặc "kết quả học tập" -> BẮT BUỘC chèn thêm "Phương thức 2 (PT2)".
             - Nhắc đến "đánh giá năng lực" hoặc "ĐGNL" -> BẮT BUỘC chèn thêm "Phương thức 3 (PT3)".
+        9. QUY TẮC BỔ SUNG THỜI GIAN CHO DỮ LIỆU TUYỂN SINH:
+            NẾU câu hỏi của người dùng liên quan đến các chủ đề mang tính thời sự thay đổi theo từng năm (như: "chỉ tiêu", "điểm chuẩn", "học phí", "phương thức xét tuyển", "thông tin tuyển sinh"):
+
+            Trường hợp 1: Nếu người dùng KHÔNG nhắc đến một năm cụ thể nào (ví dụ: 2024, 2025...), bạn BẮT BUỘC phải tự động chỉ duy nhất chèn thêm các từ khóa: "mới nhất", "dự kiến", "năm nay" vào câu truy vấn.
+
+            Trường hợp 2: Nếu người dùng CÓ nhắc đến một năm cụ thể (ví dụ: "chỉ tiêu năm 2024"), hãy giữ nguyên mốc thời gian đó và tuyệt đối không thêm chữ "mới nhất".
         """
         # assume async predict exists
         enriched = await self.control_llm.ainvoke(prompt)
         print("==== RAW RESPONSE ====")
         print(user_message)
         print("======================")
+        
         # fallback: if empty use original
         enriched_lines = (
             self._message_text(enriched).strip().splitlines() if enriched else []
         )
         enriched_txt = enriched_lines[0] if enriched_lines else user_message
+        print("==== ENRICH QUERY ====")
+        print(enriched_txt)
+        print("======================")
         return enriched_txt
 
     # ---------------------------
@@ -665,6 +687,79 @@ class TrainingService:
             or ("true" in r)
             or (r.startswith("đúng"))
             or (r.startswith("true"))
+        )
+    async def llm_listing_check(self, query: str) -> bool:
+        prompt = f"""
+        Bạn là chuyên gia phân loại câu hỏi cho hệ thống chatbot tuyển sinh của trường {self.university_name}.
+
+        Câu hỏi người dùng: "{query}"
+
+        Nhiệm vụ:
+        Xác định liệu câu hỏi trên có yêu cầu một DANH SÁCH ĐẦY ĐỦ hay không.
+
+        Trả về "true" nếu câu hỏi yêu cầu liệt kê toàn bộ, ví dụ:
+        - Danh sách ngành đào tạo ("trường có những ngành gì", "liệt kê các ngành", "có bao nhiêu ngành")
+        - Chỉ tiêu từng ngành ("chỉ tiêu các ngành năm nay", "mỗi ngành lấy bao nhiêu người")
+        - Điểm chuẩn tất cả các ngành ("điểm chuẩn các ngành", "năm ngoái ngành nào lấy bao nhiêu điểm")
+        - Học phí từng ngành / toàn bộ chương trình ("học phí các ngành", "bảng học phí")
+        - Các phương thức xét tuyển ("có những phương thức xét tuyển nào")
+        - Danh sách tổ hợp môn ("các tổ hợp môn xét tuyển", "tổ hợp nào được dùng")
+        - Danh sách học bổng / chính sách hỗ trợ ("có những loại học bổng nào")
+        - Danh sách cơ sở / campus ("trường có mấy cơ sở", "các cơ sở đào tạo")
+        - Bất kỳ câu hỏi nào dùng từ: "tất cả", "toàn bộ", "các ... là gì", "liệt kê", "danh sách", "có những ... nào", "bao nhiêu ngành/chuyên ngành"
+
+        Trả về "false" nếu câu hỏi chỉ hỏi về MỘT ngành / MỘT thông tin cụ thể, ví dụ:
+        - "ngành CNTT điểm chuẩn bao nhiêu"
+        - "học phí ngành Kinh tế là bao nhiêu"
+        - "xét tuyển học bạ cần điều kiện gì"
+        - "trường có ngành Y không"
+        - câu hỏi chung chung không cần liệt kê
+
+        Chỉ trả về duy nhất một từ:
+        "true" nếu cần danh sách đầy đủ, "false" nếu không cần.
+        """
+        res = await self.control_llm.ainvoke(prompt)
+        content = self._message_text(res)
+        if not content:
+            return False
+        r = content.strip().lower()
+        return (
+            ("đúng" in r)
+            or ("true" in r)
+            or r.startswith("đúng")
+            or r.startswith("true")
+        )
+    
+    async def llm_admission_check(self, query: str) -> bool:
+        prompt = f"""
+        Bạn là chuyên gia phân loại câu hỏi cho hệ thống chatbot tuyển sinh của trường {self.university_name}.
+
+        Câu hỏi người dùng: "{query}"
+
+        Nhiệm vụ:
+        Xác định liệu câu hỏi trên có thuộc lĩnh vực tuyển sinh đại học
+
+        Phạm vi tuyển sinh bao gồm:
+        - Xét tuyển, điểm chuẩn, phương thức xét tuyển (học bạ, ĐGNL, thi THPT...)
+        - Ngành đào tạo, chuyên ngành, tổ hợp môn xét tuyển
+        - Học phí
+        - Điều kiện xét tuyển, hồ sơ đăng ký, quy trình nộp hồ sơ
+        - Chỉ tiêu tuyển sinh, thời gian tuyển sinh
+        
+
+        Chỉ trả về duy nhất một từ:
+        "true" nếu thuộc tuyển sinh, "false" nếu không thuộc.
+        """
+        res = await self.control_llm.ainvoke(prompt)
+        content = self._message_text(res)
+        if not content:
+            return False
+        r = content.strip().lower()
+        return (
+            ("đúng" in r)
+            or ("true" in r)
+            or r.startswith("đúng")
+            or r.startswith("true")
         )
 
     async def llm_document_recommendation_check(
@@ -828,6 +923,7 @@ class TrainingService:
         confidence: float = 5.0,
     ):
         print("vào doc stream")
+        
         db = SessionLocal()
         suggestion_threshold = float(os.getenv("CONFIDENCE_SCORE", 0.35))
         try:
@@ -1065,7 +1161,7 @@ class TrainingService:
                 yield text
                 await asyncio.sleep(0)  # Nhường event loop
             print(full_response)
-            memory.save_context({"input": query}, {"output": full_response})
+            memory.save_context({"input": message}, {"output": full_response})
 
             # === Lưu bot response vào DB ===
             bot_msg = ChatInteraction(
@@ -1214,6 +1310,9 @@ class TrainingService:
                 Nếu một đoạn context chứa cả thông tin GSA lẫn GHA, chỉ lấy phần 
                 có ghi đúng mã trường mà người dùng hỏi, bỏ qua phần còn lại.
                 Không tự suy luận hay ghép thông tin từ campus khác sang.
+            - QUY TẮC ĐỌC SỐ LIỆU TUYỂN SINH (CHỐNG NHIỄU LỊCH SỬ):
+                + Khi người dùng hỏi về "chỉ tiêu dự kiến", "điểm chuẩn" hoặc các số liệu của "năm nay", bạn phải quét Context và tuân thủ NGHIÊM NGẶT nguyên tắc sau:
+                    1. BẮT BUỘC lấy con số ở các bảng theo mốc thời gian mà người dùng muốn.
             - Ghi rõ năm của dữ liệu mà bạn lấy được từ heading trong context (VD: "Đề án tuyển sinh 2026").
     KHÔNG tự suy đoán hoặc copy năm từ câu hỏi của người dùng nếu context không xác nhận.
             - Hệ đào tạo: đọc heading context để xác định đúng hệ (Chính quy, Vừa làm vừa học,
@@ -1237,7 +1336,7 @@ class TrainingService:
                 yield text
                 await asyncio.sleep(0)  # Nhường event loop
             print(full_response)
-            memory.save_context({"input": query}, {"output": full_response})
+            memory.save_context({"input": message}, {"output": full_response})
 
             # === Lưu bot response vào DB ===
             bot_msg = ChatInteraction(
@@ -1340,7 +1439,7 @@ class TrainingService:
                 yield text
                 await asyncio.sleep(0)  # Nhường event loop
 
-            memory.save_context({"input": query}, {"output": full_response})
+            memory.save_context({"input": message}, {"output": full_response})
             print(
                 "Saved to memory. Current messages:", len(memory.chat_memory.messages)
             )
@@ -1593,7 +1692,7 @@ class TrainingService:
                 yield text
                 await asyncio.sleep(0)  # Nhường event loop
 
-            memory.save_context({"input": query}, {"output": full_response})
+            memory.save_context({"input": message}, {"output": full_response})
             print(
                 "Saved to memory. Current messages:",
                 len(memory.chat_memory.messages),
@@ -2300,12 +2399,38 @@ class TrainingService:
             if headers:
                 text = f"[{' > '.join(headers)}]\n{text}"
             chunks.append(text)
-        return chunks
+        result = []
+        for chunk in chunks:
+            result.extend(self._split_large_table(chunk, max_rows=3))
+        return result
 
     def _plain_chunks(self, content: str, char_splitter) -> list[str]:
         """Chunk plain text — dùng cho TXT, OCR, xlsx, pptx..."""
         return [c for c in char_splitter.split_text(content) if c.strip()]
-
+    def _merge_wrapped_lines(self, lines: list[str]) -> list[str]:
+        """
+        Merge dòng bị word-wrap: nếu dòng hiện tại match TITLE_PATTERN
+        nhưng dòng tiếp theo là 1 từ đơn không match pattern nào
+        → đây là phần còn lại của tên bị wrap, merge vào.
+        """
+        SINGLE_WORD = re.compile(r'^\S+$')
+        result = []
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            # Nếu dòng này là tên người (match title pattern)
+            if self.TITLE_PATTERN.match(line):
+                # Peek dòng tiếp: nếu là 1 từ đơn và không phải title mới → merge
+                while (
+                    i + 1 < len(lines)
+                    and SINGLE_WORD.match(lines[i + 1])
+                    and not self.TITLE_PATTERN.match(lines[i + 1])
+                ):
+                    i += 1
+                    line = line + ' ' + lines[i]
+            result.append(line)
+            i += 1
+        return result
     def _restructure_personnel_blocks(
     self, chunks: list[str], unit_name: str
 ) -> list[str]:
@@ -2337,15 +2462,14 @@ class TrainingService:
     # ============================================================
 
     TITLE_PATTERN = re.compile(
-        r'^(GS|PGS|TS|ThS|Ths|ThS\.NCS|Ths\.NCS|KS|CN|NCS)\.?\s+\S',
-        re.MULTILINE
-    )
+    r'^(GS\.?\s*|PGS\.?\s*)?(TS|ThS|Ths|ThS\.NCS|Ths\.NCS|KS|CN|NCS)\.?\s+\S',
+    re.MULTILINE)
 
     def _restructure_personnel(self, raw: str, unit_name: str) -> str:
         print(f"[DEBUG RESTRUCTURE INPUT]\n{repr(raw[:500])}")
         lines = [l.strip() for l in raw.splitlines() if l.strip()]
         print(f"[DEBUG LINES] {lines[:10]}")
-
+        lines = self._merge_wrapped_lines(lines)
         tokens = []
         for line in lines:
             if self.TITLE_PATTERN.match(line):
@@ -2407,17 +2531,35 @@ class TrainingService:
         matches = self.TITLE_PATTERN.findall(text)
         print(f"[DEBUG IS_PERSONNEL] matches={matches} count={len(matches)}")
         return len(matches) >= 3
+    def _flatten_table_row(self, row: str) -> str:
+        """
+        Chuyển 1 markdown table row thành plain text.
+        | 4 | Phòng CTCT&SV | Trưởng phòng: ThS. Đặng Văn Ơn... |
+        → Phòng CTCT&SV: Trưởng phòng: ThS. Đặng Văn Ơn...
+        """
+        # Tách cells, bỏ cell đầu (số thứ tự) nếu là số
+        cells = [c.strip() for c in row.split("|") if c.strip()]
+        if not cells:
+            return ""
+        
+        # Bỏ cell đầu nếu là số thứ tự
+        if cells[0].isdigit():
+            cells = cells[1:]
+        
+        if not cells:
+            return ""
+        
+        # Cell đầu là tên đơn vị/người, các cell sau là nội dung
+        if len(cells) == 1:
+            return cells[0]
+        
+        subject = cells[0]
+        content = " ".join(cells[1:])
+        return f"{subject}: {content}"
     
     def _split_large_table(self, chunk: str, max_rows: int = 10) -> list[str]:
-        """
-        Nếu chunk chứa bảng có quá nhiều dòng dữ liệu,
-        split thành các chunk nhỏ hơn, mỗi chunk giữ lại header bảng.
-        """
-
         lines = chunk.splitlines()
-
-        # Tách phần header context (trước bảng) và phần bảng
-        header_context = []  # phần [section > ...] và mô tả
+        header_context = []
         table_lines = []
         in_table = False
 
@@ -2434,37 +2576,41 @@ class TrainingService:
         if not table_lines:
             return [chunk]
 
-        # Xác định header bảng (2 dòng đầu: header + ---)
         table_header = []
         data_rows = []
         found_separator = False
         for line in table_lines:
             if not found_separator:
                 table_header.append(line)
-                if "| --- |" in line or "|---|" in line:
+                if re.search(r'\|\s*---', line):  # fix vấn đề 2
                     found_separator = True
             else:
-                # Bỏ qua dòng header lặp lại (không bắt đầu bằng số thứ tự)
                 if line.startswith("| TT ") or line.startswith("| tt "):
                     table_header.append(line)
                 else:
                     data_rows.append(line)
-
-        # Nếu ít hơn max_rows thì không cần split
+        print(f"[DEBUG SPLIT_TABLE] data_rows={len(data_rows)} max_rows={max_rows} will_split={len(data_rows) > max_rows}")
         if len(data_rows) <= max_rows:
-            return [chunk]
+            # Flatten luôn dù không split
+            prefix = "\n".join(header_context)
+            flat_rows = [self._flatten_table_row(r) for r in data_rows if r.strip()]
+            flat_rows = [r for r in flat_rows if r]
+            return [f"{prefix}\n" + "\n".join(flat_rows)] if flat_rows else [chunk]
 
-        # Split thành các nhóm max_rows dòng
         prefix = "\n".join(header_context)
         table_head_str = "\n".join(table_header)
 
         sub_chunks = []
         for i in range(0, len(data_rows), max_rows):
-            batch = data_rows[i : i + max_rows]
-            sub_chunk = f"{prefix}\n{table_head_str}\n" + "\n".join(batch)
-            sub_chunks.append(sub_chunk)
+            batch = data_rows[i: i + max_rows]
+            label = f"{prefix} (tiếp theo)\n" if sub_chunks else f"{prefix}\n"
+            flat_rows = [self._flatten_table_row(r) for r in batch if r.strip()]
+            flat_rows = [r for r in flat_rows if r]
+            
+            if flat_rows:
+                sub_chunks.append(label + "\n".join(flat_rows))
 
-        return sub_chunks
+        return sub_chunks if sub_chunks else [chunk]
 
     def _enrich_table_chunks(self, chunks: list[str], doc_context: str) -> list[str]:
         def has_table(chunk: str) -> bool:
@@ -2960,7 +3106,7 @@ class TrainingService:
             f"{stage}: start search_documents top_k={top_k} query_len={len(query or '')}",
             trace_id,
         )
-        # STAGE 1: DENSE RETRIEVAL (Vector Search)
+        
         try:
             if query_embedding is None:
                 query_embedding = await self.embeddings.aembed_query(query)
@@ -2975,26 +3121,7 @@ class TrainingService:
 
             if not raw_results:
                 return []
-            # # STAGE 2: RERANKING
-
-            # pairs = []
-            # for hit in raw_results:
-
-            #     chunk_text = hit.payload.get("chunk_text", "")
-            #     pairs.append((query, chunk_text))
-
-            # # Chạy Reranker. CrossEncoder.predict() là hàm đồng bộ (sync),
-            # # dùng asyncio.to_thread để tránh block async event loop.
-            # rerank_scores = await asyncio.to_thread(
-            #     RERANKER_MODEL.predict, pairs, batch_size=16
-            # )
-            # # Ghi đè điểm vector bằng điểm Reranker và sắp xếp giảm dần
-            # for i, hit in enumerate(raw_results):
-            #     hit.score = float(rerank_scores[i])
-            # reranked_results = sorted(raw_results, key=lambda x: x.score, reverse=True)
-
-            # # Cắt lấy top_k tốt nhất
-            # final_results = reranked_results[:15]
+            
             elapsed_ms = int((time.perf_counter() - start) * 1000)
             top_score = (
                 float(getattr(raw_results[0], "score", 0.0)) if raw_results else 0.0
@@ -3325,8 +3452,8 @@ Yêu cầu:
         # STEP 1: Search training Q&A
         self._debug_log(f"hybrid_search: start query_len={len(query or '')}", trace_id)
         top_k = self.top_k
-        if audience_ids == 4:
-            top_k = 20
+        # if audience_ids == 4:
+        #     top_k = 10
         # Optimize: Embed query once
         try:
             query_embedding = await self.embeddings.aembed_query(query)
