@@ -598,6 +598,7 @@ async def stream_chat(
             # Nếu chunk sạch (hoặc không dính điều kiện trên), thêm vào danh sách
             clean_context_chunks.append(r)
         context_chunks = clean_context_chunks
+        print(f"FILE NAME: {r.payload.get('file_name', '')}")
         context = "\n\n".join([f"[Nguồn: {r.payload.get('file_name', '')}]\n{r.payload.get('chunk_text', '')}"
             if r.payload.get('file_name')
             else r.payload.get('chunk_text', '')

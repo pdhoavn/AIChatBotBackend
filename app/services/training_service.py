@@ -54,7 +54,7 @@ class TrainingService:
         self.openai_llm = init_chat_model(
             model=os.getenv("LLM_MODEL", "gpt-4.1-mini"),
             api_key=self.ai_api_key,  # Truyền rõ ràng api key ở đây
-            temperature=float(os.getenv("OPENAI_LLM_TEMPERATURE", 0.2)),
+            temperature=float(os.getenv("OPENAI_LLM_TEMPERATURE", 0)),
         )
         self.embeddings = OpenAIEmbeddings(
             model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-large"),
@@ -100,7 +100,7 @@ class TrainingService:
                     os.getenv("LLM_MODEL", "gpt-4.1-mini"),
                 ),
                 api_key=self.ai_api_key,
-                temperature=float(os.getenv("OPENAI_ANSWER_TEMPERATURE", 0.3)),
+                temperature=float(os.getenv("OPENAI_ANSWER_TEMPERATURE", 0)),
             )
             print(
                 "OpenAI LLM enabled: control="
@@ -370,86 +370,7 @@ class TrainingService:
 
         NHIỆM VỤ:
         Viết lại câu hỏi mới nhất thành một câu truy vấn ĐỘC LẬP, ĐẦY ĐỦ NGỮ NGHĨA để máy tìm kiếm (Vector Search) có thể hiểu được chính xác mà không cần đọc lại lịch sử.
-        === TỪ ĐIỂN ĐỒNG NGHĨA BẮT BUỘC ===
-        Khi người dùng dùng các cụm từ sau, BẮT BUỘC mở rộng query để bao gồm các từ tương đương:
-        1. Nhân sự / Con người
-        - "cán bộ" / "cán bộ nhà trường" 
-        → bao gồm: viên chức, giảng viên, nhân viên, người lao động
-
-        - "giảng viên" 
-        → bao gồm: nhà giáo, giáo viên, giảng viên đại học, viên chức giảng dạy
-
-        - "nhân viên" 
-        → bao gồm: viên chức, người lao động, cán bộ hành chính
-
-        - "sinh viên" 
-        → bao gồm: người học, học viên, nghiên cứu sinh
-
-        - "hiệu trưởng"
-        → bao gồm: giám đốc phân hiệu, ban giám hiệu, lãnh đạo trường
-
-        - "trưởng khoa" / "phó trưởng khoa" / "lãnh đạo khoa"
-        → bao gồm: ban lãnh đạo khoa, chủ nhiệm khoa, 
-                người đứng đầu khoa
-        → KHÔNG bao gồm: trưởng bộ môn, phó trưởng bộ môn
-        (đây là cấp thấp hơn, chỉ tìm khi được hỏi trực tiếp)
-
-        2. Hành chính / Chế độ
-        - "nghỉ phép"
-        → bao gồm: nghỉ hằng năm, nghỉ hè, nghỉ việc riêng, chế độ nghỉ, nghỉ không hưởng lương, phép năm
-
-        - "lương"
-        → bao gồm: tiền lương, thu nhập, thù lao, hệ số lương, mức lương, phụ cấp, lương 3P
-
-        - "kỷ luật"
-        → bao gồm: xử lý kỷ luật, hình thức kỷ luật, khiển trách, cảnh cáo, buộc thôi việc, vi phạm
-
-        - "đánh giá viên chức"
-        → bao gồm: xếp loại, phân loại viên chức, đánh giá cuối năm, hoàn thành nhiệm vụ
-
-        3. Đào tạo / Học vụ
-        - "học phí"
-        → bao gồm: mức học phí, phí đào tạo, chi phí học tập, học phí tín chỉ, lệ 
         
-        - "thời khóa biểu"
-        → bao gồm: TKB, lịch học, kế hoạch giảng dạy, thời gian biểu, lịch dạy
-
-        - "điểm thi"
-        → bao gồm: kết quả học tập, điểm số, điểm học phần, bảng điểm, điểm tổng kết
-
-        - "nghỉ học"
-        → bao gồm: bảo lưu, nghỉ học tạm thời, tạm dừng học, hoãn học
-
-        - "ra trường"
-        → bao gồm: tốt nghiệp, xét tốt nghiệp, công nhận tốt nghiệp, nhận bằng, hoàn thành chương trình
-
-        - "chương trình đào tạo"
-        → bao gồm: CTĐT, giáo trình, khung chương trình, chuẩn đầu ra, học phần, tín chỉ
-
-        - "tiếng anh" / "ngoại ngữ" / "anh văn"
-        → bao gồm: chứng chỉ ngoại ngữ, chuẩn đầu ra ngoại ngữ, điều kiện ngoại ngữ, năng lực ngoại ngữ, TOEIC, IELTS, TOEFL, B1, B2, A2, khung năng lực ngoại ngữ 6 bậc, CEFR, chứng chỉ tiếng Anh, tiếng Anh đầu ra
-
-        - "chuẩn đầu ra" / "điều kiện tốt nghiệp" / "điều kiện ra trường"
-        → bao gồm: chuẩn đầu ra ngoại ngữ, chuẩn đầu ra tin học, điều kiện xét tốt nghiệp, yêu cầu tốt nghiệp, chứng chỉ bắt buộc, chứng chỉ đầu ra
-
-        - "đồ án" / "luận văn" / "khóa luận"
-        → bao gồm: đồ án tốt nghiệp, luận văn tốt nghiệp, đề tài tốt nghiệp, bảo vệ đồ án, hội đồng chấm đồ án
-        4. Đơn vị / Tổ chức
-        - "phòng ban"
-        → bao gồm: đơn vị, bộ phận, khoa, bộ môn, trung tâm, ban
-
-        - "ký túc xá"
-        → bao gồm: KTX, nội trú, chỗ ở sinh viên, khu nội trú, nhà ở sinh viên, phòng kí túc xá
-
-        5. Văn bản / Quy định
-        - "quy định"
-        → bao gồm: quy chế, nội quy, điều lệ, quy trình, hướng dẫn, thông tư, nghị định
-
-        - "hồ sơ"
-        → bao gồm: giấy tờ, tài liệu, đơn, văn bản, minh chứng, chứng từ
-
-        - "xin / đăng ký"
-        → bao gồm: nộp đơn, đề nghị, làm thủ tục, đăng ký, nộp hồ sơ
 
         Ví dụ:
         - "quy trình nghỉ phép đối với cán bộ" 
@@ -486,6 +407,43 @@ class TrainingService:
             BẮT BUỘC bổ sung thêm các cụm từ: chức vụ, phòng ban
             Ví dụ: > - User hỏi: "ông đặng văn ơn có chức vụ gì"
             Bạn phải sinh ra Query: Tìm chức vụ, đơn vị công tác và phòng ban của "Đặng Văn Ơn"
+        === QUY TẮC MỞ RỘNG TỪ ĐỒNG NGHĨA (ƯU TIÊN TỐI CAO) ===
+        Nếu câu hỏi của người dùng chứa BẤT KỲ TỪ NÀO thuộc một trong các Nhóm dưới đây, BẮT BUỘC phải viết lại câu hỏi bằng cách chèn thêm TẤT CẢ các từ còn lại cùng Nhóm đó vào câu. 
+        (Quy tắc này BẮT BUỘC THỰC HIỆN, ghi đè lên quy tắc "Giữ nguyên nếu đã rõ ràng").
+
+        1. NHÓM NHÂN SỰ / CON NGƯỜI:
+        - Nhóm Chức danh Đứng đầu (1-1): "hiệu trưởng", "giám đốc phân hiệu", "giám đốc", "người đứng đầu trường". 
+        - Nhóm Tập thể Lãnh đạo: "ban giám hiệu", "ban giám đốc".
+        - Nhóm Lãnh đạo khoa: "trưởng khoa", "phó trưởng khoa", "lãnh đạo khoa", "ban lãnh đạo khoa", "chủ nhiệm khoa", "người đứng đầu khoa" (Lưu ý: KHÔNG bao gồm trưởng/phó bộ môn).
+        - Nhóm Viên chức chung: "cán bộ", "cán bộ nhà trường", "viên chức", "nhân viên", "người lao động", "cán bộ hành chính"
+        - Nhóm Giảng dạy: "giảng viên", "nhà giáo", "giáo viên", "giảng viên đại học", "viên chức giảng dạy"
+        - Nhóm Người học: "sinh viên", "người học", "học viên", "nghiên cứu sinh"
+
+        2. NHÓM HÀNH CHÍNH / CHẾ ĐỘ:
+        - Nhóm Nghỉ phép: "nghỉ phép", "nghỉ hằng năm", "nghỉ hè", "nghỉ việc riêng", "chế độ nghỉ", "nghỉ không hưởng lương", "phép năm"
+        - Nhóm Tiền lương: "lương", "tiền lương", "thu nhập", "thù lao", "hệ số lương", "mức lương", "phụ cấp", "lương 3P"
+        - Nhóm Kỷ luật: "kỷ luật", "xử lý kỷ luật", "hình thức kỷ luật", "khiển trách", "cảnh cáo", "buộc thôi việc", "vi phạm"
+        - Nhóm Đánh giá: "đánh giá viên chức", "xếp loại", "phân loại viên chức", "đánh giá cuối năm", "hoàn thành nhiệm vụ"
+
+        3. NHÓM ĐÀO TẠO / HỌC VỤ:
+        - Nhóm Tài chính: "học phí", "mức học phí", "phí đào tạo", "chi phí học tập", "học phí tín chỉ", "lệ phí"
+        - Nhóm Lịch học: "thời khóa biểu", "TKB", "lịch học", "kế hoạch giảng dạy", "thời gian biểu", "lịch dạy"
+        - Nhóm Kết quả thi: "điểm thi", "kết quả học tập", "điểm số", "điểm học phần", "bảng điểm", "điểm tổng kết"
+        - Nhóm Tạm dừng: "nghỉ học", "bảo lưu", "nghỉ học tạm thời", "tạm dừng học", "hoãn học"
+        - Nhóm Tốt nghiệp: "ra trường", "tốt nghiệp", "xét tốt nghiệp", "công nhận tốt nghiệp", "nhận bằng", "hoàn thành chương trình"
+        - Nhóm Điều kiện đầu ra: "chuẩn đầu ra", "điều kiện tốt nghiệp", "điều kiện ra trường", "chuẩn đầu ra ngoại ngữ", "chuẩn đầu ra tin học", "điều kiện xét tốt nghiệp", "yêu cầu tốt nghiệp", "chứng chỉ bắt buộc", "chứng chỉ đầu ra"
+        - Nhóm Chương trình: "chương trình đào tạo", "CTĐT", "giáo trình", "khung chương trình", "học phần", "tín chỉ"
+        - Nhóm Ngoại ngữ: "tiếng anh", "ngoại ngữ", "anh văn", "chứng chỉ ngoại ngữ", "điều kiện ngoại ngữ", "năng lực ngoại ngữ", "TOEIC", "IELTS", "TOEFL", "B1", "B2", "A2", "khung năng lực ngoại ngữ 6 bậc", "CEFR", "chứng chỉ tiếng Anh", "tiếng Anh đầu ra"
+        - Nhóm Luận văn: "đồ án", "luận văn", "khóa luận", "đồ án tốt nghiệp", "luận văn tốt nghiệp", "đề tài tốt nghiệp", "bảo vệ đồ án", "hội đồng chấm đồ án"
+
+        4. NHÓM ĐƠN VỊ / TỔ CHỨC:
+        - Nhóm Phòng ban: "phòng ban", "đơn vị", "bộ phận", "khoa", "bộ môn", "trung tâm", "ban"
+        - Nhóm Cư trú: "ký túc xá", "KTX", "nội trú", "chỗ ở sinh viên", "khu nội trú", "nhà ở sinh viên", "phòng kí túc xá"
+
+        5. NHÓM VĂN BẢN / QUY ĐỊNH:
+        - Nhóm Quy chế: "quy định", "quy chế", "nội quy", "điều lệ", "quy trình", "hướng dẫn", "thông tư", "nghị định"
+        - Nhóm Giấy tờ: "hồ sơ", "giấy tờ", "tài liệu", "đơn", "văn bản", "minh chứng", "chứng từ"
+        - Nhóm Thủ tục: "xin", "đăng ký", "nộp đơn", "đề nghị", "làm thủ tục", "nộp hồ sơ"
         """
         # THÊM LOG NÀY
         print(f"[ENRICH] chat_history length={len(str(chat_history))}")
@@ -520,89 +478,6 @@ class TrainingService:
         "{user_message}"
 
         NHIỆM VỤ:
-        === TỪ ĐIỂN ĐỒNG NGHĨA BẮT BUỘC ===
-        Khi người dùng dùng các cụm từ sau, BẮT BUỘC mở rộng query để bao gồm các từ tương đương:
-        1. Nhân sự / Con người
-        - "cán bộ" / "cán bộ nhà trường" 
-        → bao gồm: viên chức, giảng viên, nhân viên, người lao động
-
-        - "giảng viên" 
-        → bao gồm: nhà giáo, giáo viên, giảng viên đại học, viên chức giảng dạy
-
-        - "nhân viên" 
-        → bao gồm: viên chức, người lao động, cán bộ hành chính
-
-        - "sinh viên" 
-        → bao gồm: người học, học viên, nghiên cứu sinh
-
-        - "hiệu trưởng"
-        → bao gồm: giám đốc phân hiệu, ban giám hiệu, lãnh đạo trường
-
-        - "trưởng khoa"
-        → bao gồm: lãnh đạo khoa, chủ nhiệm khoa, trưởng bộ môn, người đứng đầu đơn vị
-
-        2. Hành chính / Chế độ
-        - "nghỉ phép"
-        → bao gồm: nghỉ hằng năm, nghỉ hè, nghỉ việc riêng, chế độ nghỉ, nghỉ không hưởng lương, phép năm
-
-        - "lương"
-        → bao gồm: tiền lương, thu nhập, thù lao, hệ số lương, mức lương, phụ cấp, lương 3P
-
-        - "kỷ luật"
-        → bao gồm: xử lý kỷ luật, hình thức kỷ luật, khiển trách, cảnh cáo, buộc thôi việc, vi phạm
-
-        - "đánh giá viên chức"
-        → bao gồm: xếp loại, phân loại viên chức, đánh giá cuối năm, hoàn thành nhiệm vụ
-
-        3. Đào tạo / Học vụ
-        - "học phí"
-        → bao gồm: mức học phí, phí đào tạo, chi phí học tập, học phí tín chỉ, lệ 
-        
-        - "thời khóa biểu"
-        → bao gồm: TKB, lịch học, kế hoạch giảng dạy, thời gian biểu, lịch dạy
-
-        - "điểm thi"
-        → bao gồm: kết quả học tập, điểm số, điểm học phần, bảng điểm, điểm tổng kết
-
-        - "nghỉ học"
-        → bao gồm: bảo lưu, nghỉ học tạm thời, tạm dừng học, hoãn học
-
-        - "ra trường"
-        → bao gồm: tốt nghiệp, xét tốt nghiệp, công nhận tốt nghiệp, nhận bằng, hoàn thành chương trình
-
-        - "chương trình đào tạo"
-        → bao gồm: CTĐT, giáo trình, khung chương trình, chuẩn đầu ra, học phần, tín chỉ
-
-        - "tiếng anh" / "ngoại ngữ" / "anh văn"
-        → bao gồm: chứng chỉ ngoại ngữ, chuẩn đầu ra ngoại ngữ, điều kiện ngoại ngữ, năng lực ngoại ngữ, TOEIC, IELTS, TOEFL, B1, B2, A2, khung năng lực ngoại ngữ 6 bậc, CEFR, chứng chỉ tiếng Anh, tiếng Anh đầu ra
-
-        - "chuẩn đầu ra" / "điều kiện tốt nghiệp" / "điều kiện ra trường"
-        → bao gồm: chuẩn đầu ra ngoại ngữ, chuẩn đầu ra tin học, điều kiện xét tốt nghiệp, yêu cầu tốt nghiệp, chứng chỉ bắt buộc, chứng chỉ đầu ra
-
-        - "đồ án" / "luận văn" / "khóa luận"
-        → bao gồm: đồ án tốt nghiệp, luận văn tốt nghiệp, đề tài tốt nghiệp, bảo vệ đồ án, hội đồng chấm đồ án
-        4. Đơn vị / Tổ chức
-        - "phòng ban"
-        → bao gồm: đơn vị, bộ phận, khoa, bộ môn, trung tâm, ban
-
-        - "ký túc xá"
-        → bao gồm: KTX, nội trú, chỗ ở sinh viên, khu nội trú, nhà ở sinh viên, phòng kí túc xá
-
-        5. Văn bản / Quy định
-        - "quy định"
-        → bao gồm: quy chế, nội quy, điều lệ, quy trình, hướng dẫn, thông tư, nghị định
-
-        - "hồ sơ"
-        → bao gồm: giấy tờ, tài liệu, đơn, văn bản, minh chứng, chứng từ
-
-        - "xin / đăng ký"
-        → bao gồm: nộp đơn, đề nghị, làm thủ tục, đăng ký, nộp hồ sơ
-
-        Ví dụ:
-        - "quy trình nghỉ phép đối với cán bộ" 
-        → rewrite: "chế độ nghỉ phép của viên chức giảng viên nhân viên"
-        - "lương của cán bộ" 
-        → rewrite: "chế độ tiền lương viên chức giảng viên người lao động"
         HƯỚNG DẪN:
         1. KHÔI PHỤC NGỮ CẢNH: Thay thế các đại từ (nó, trường này, ngành đó), câu rút gọn, hoặc chủ ngữ bị khuyết bằng các DANH TỪ RIÊNG cụ thể (tên trường, tên cơ sở, tên ngành, phương thức) ĐÃ XUẤT HIỆN trong hội thoại trước đó.
         ĐẶC BIỆT: Các cụm "dẫn chứng này", "thông tin trên", "quy định đó", "điều vừa nói", 
@@ -631,6 +506,44 @@ class TrainingService:
             Trường hợp 1: Nếu người dùng KHÔNG nhắc đến một năm cụ thể nào (ví dụ: 2024, 2025...), bạn BẮT BUỘC phải tự động chỉ duy nhất chèn thêm các từ khóa: "mới nhất", "dự kiến", "năm nay" vào câu truy vấn.
 
             Trường hợp 2: Nếu người dùng CÓ nhắc đến một năm cụ thể (ví dụ: "chỉ tiêu năm 2024"), hãy giữ nguyên mốc thời gian đó và tuyệt đối không thêm chữ "mới nhất".
+
+        === QUY TẮC MỞ RỘNG TỪ ĐỒNG NGHĨA (ƯU TIÊN TỐI CAO) ===
+        Nếu câu hỏi của người dùng chứa BẤT KỲ TỪ NÀO thuộc một trong các Nhóm dưới đây, BẮT BUỘC phải viết lại câu hỏi bằng cách chèn thêm TẤT CẢ các từ còn lại cùng Nhóm đó vào câu. 
+        (Quy tắc này BẮT BUỘC THỰC HIỆN, ghi đè lên quy tắc "Giữ nguyên nếu đã rõ ràng").
+
+        1. NHÓM NHÂN SỰ / CON NGƯỜI:
+        - Nhóm Chức danh Đứng đầu (1-1): "hiệu trưởng", "giám đốc phân hiệu", "giám đốc", "người đứng đầu trường". 
+        - Nhóm Tập thể Lãnh đạo: "ban giám hiệu", "ban giám đốc".
+        - Nhóm Lãnh đạo khoa: "trưởng khoa", "phó trưởng khoa", "lãnh đạo khoa", "ban lãnh đạo khoa", "chủ nhiệm khoa", "người đứng đầu khoa" (Lưu ý: KHÔNG bao gồm trưởng/phó bộ môn).
+        - Nhóm Viên chức chung: "cán bộ", "cán bộ nhà trường", "viên chức", "nhân viên", "người lao động", "cán bộ hành chính"
+        - Nhóm Giảng dạy: "giảng viên", "nhà giáo", "giáo viên", "giảng viên đại học", "viên chức giảng dạy"
+        - Nhóm Người học: "sinh viên", "người học", "học viên", "nghiên cứu sinh"
+
+        2. NHÓM HÀNH CHÍNH / CHẾ ĐỘ:
+        - Nhóm Nghỉ phép: "nghỉ phép", "nghỉ hằng năm", "nghỉ hè", "nghỉ việc riêng", "chế độ nghỉ", "nghỉ không hưởng lương", "phép năm"
+        - Nhóm Tiền lương: "lương", "tiền lương", "thu nhập", "thù lao", "hệ số lương", "mức lương", "phụ cấp", "lương 3P"
+        - Nhóm Kỷ luật: "kỷ luật", "xử lý kỷ luật", "hình thức kỷ luật", "khiển trách", "cảnh cáo", "buộc thôi việc", "vi phạm"
+        - Nhóm Đánh giá: "đánh giá viên chức", "xếp loại", "phân loại viên chức", "đánh giá cuối năm", "hoàn thành nhiệm vụ"
+
+        3. NHÓM ĐÀO TẠO / HỌC VỤ:
+        - Nhóm Tài chính: "học phí", "mức học phí", "phí đào tạo", "chi phí học tập", "học phí tín chỉ", "lệ phí"
+        - Nhóm Lịch học: "thời khóa biểu", "TKB", "lịch học", "kế hoạch giảng dạy", "thời gian biểu", "lịch dạy"
+        - Nhóm Kết quả thi: "điểm thi", "kết quả học tập", "điểm số", "điểm học phần", "bảng điểm", "điểm tổng kết"
+        - Nhóm Tạm dừng: "nghỉ học", "bảo lưu", "nghỉ học tạm thời", "tạm dừng học", "hoãn học"
+        - Nhóm Tốt nghiệp: "ra trường", "tốt nghiệp", "xét tốt nghiệp", "công nhận tốt nghiệp", "nhận bằng", "hoàn thành chương trình"
+        - Nhóm Điều kiện đầu ra: "chuẩn đầu ra", "điều kiện tốt nghiệp", "điều kiện ra trường", "chuẩn đầu ra ngoại ngữ", "chuẩn đầu ra tin học", "điều kiện xét tốt nghiệp", "yêu cầu tốt nghiệp", "chứng chỉ bắt buộc", "chứng chỉ đầu ra"
+        - Nhóm Chương trình: "chương trình đào tạo", "CTĐT", "giáo trình", "khung chương trình", "học phần", "tín chỉ"
+        - Nhóm Ngoại ngữ: "tiếng anh", "ngoại ngữ", "anh văn", "chứng chỉ ngoại ngữ", "điều kiện ngoại ngữ", "năng lực ngoại ngữ", "TOEIC", "IELTS", "TOEFL", "B1", "B2", "A2", "khung năng lực ngoại ngữ 6 bậc", "CEFR", "chứng chỉ tiếng Anh", "tiếng Anh đầu ra"
+        - Nhóm Luận văn: "đồ án", "luận văn", "khóa luận", "đồ án tốt nghiệp", "luận văn tốt nghiệp", "đề tài tốt nghiệp", "bảo vệ đồ án", "hội đồng chấm đồ án"
+
+        4. NHÓM ĐƠN VỊ / TỔ CHỨC:
+        - Nhóm Phòng ban: "phòng ban", "đơn vị", "bộ phận", "khoa", "bộ môn", "trung tâm", "ban"
+        - Nhóm Cư trú: "ký túc xá", "KTX", "nội trú", "chỗ ở sinh viên", "khu nội trú", "nhà ở sinh viên", "phòng kí túc xá"
+
+        5. NHÓM VĂN BẢN / QUY ĐỊNH:
+        - Nhóm Quy chế: "quy định", "quy chế", "nội quy", "điều lệ", "quy trình", "hướng dẫn", "thông tư", "nghị định"
+        - Nhóm Giấy tờ: "hồ sơ", "giấy tờ", "tài liệu", "đơn", "văn bản", "minh chứng", "chứng từ"
+        - Nhóm Thủ tục: "xin", "đăng ký", "nộp đơn", "đề nghị", "làm thủ tục", "nộp hồ sơ"
         """
         # assume async predict exists
         enriched = await self.control_llm.ainvoke(prompt)
@@ -737,18 +650,28 @@ class TrainingService:
         Câu hỏi người dùng: "{query}"
 
         Nhiệm vụ:
-        Xác định liệu câu hỏi trên có thuộc lĩnh vực tuyển sinh đại học
+        Xác định câu hỏi này có hỏi về thông tin TUYỂN SINH hay không.
 
-        Phạm vi tuyển sinh bao gồm:
+        Trả về "true" nếu nội dung câu hỏi liên quan đến tuyển sinh:
         - Xét tuyển, điểm chuẩn, phương thức xét tuyển (học bạ, ĐGNL, thi THPT...)
         - Ngành đào tạo, chuyên ngành, tổ hợp môn xét tuyển
-        - Học phí
+        - Chỉ tiêu tuyển sinh, thời gian xét tuyển
         - Điều kiện xét tuyển, hồ sơ đăng ký, quy trình nộp hồ sơ
-        - Chỉ tiêu tuyển sinh, thời gian tuyển sinh
+        - Học phí đầu vào, học bổng tân sinh viên
+        - Thông tin tuyển sinh dù người hỏi là sinh viên, viên chức hay phụ 
         
+        Trả về "false" nếu câu hỏi KHÔNG liên quan đến tuyển sinh:
+        - Điểm môn học, kết quả học tập, bảng điểm của sinh viên ĐANG HỌC
+        - Thời khóa biểu, lịch thi nội bộ của sinh viên đang học
+        - Học vụ, đăng ký môn, rút môn, bảo lưu, nghỉ học
+        - Học phí HỌC KỲ / NĂM HỌC của sinh viên đang theo học (không phải học phí đầu vào)
+        - Học bổng DUY TRÌ / KHUYẾN KHÍCH cho sinh viên đang học
+        - Quy định lao động, lương thưởng, nghỉ phép, hợp đồng của viên chức / người lao động
+        - Chỉ tiêu BIÊN CHẾ / tuyển dụng nhân sự nội bộ
+        - Hồ sơ TUYỂN DỤNG nhân sự (khác với hồ sơ xét tuyển sinh viên)
+        - Lời chào hỏi, câu hỏi không liên quan đến nhà trường
 
-        Chỉ trả về duy nhất một từ:
-        "true" nếu thuộc tuyển sinh, "false" nếu không thuộc.
+        Chỉ trả về duy nhất một từ: "true" hoặc "false"
         """
         res = await self.control_llm.ainvoke(prompt)
         content = self._message_text(res)
@@ -961,7 +884,10 @@ class TrainingService:
             print("→ going to LLM context")
             print(context)
             prompt = f"""Bạn là một chatbot tra cứu thông tin chuyên nghiệp của trường {self.university_name}
-            Hãy coi mọi thông tin được cung cấp trong Context chính là "kiến thức của nhà trường" và "kiến thức của bạn".
+            QUY TẮC XƯNG HÔ VÀ SỞ HỮU DỮ LIỆU (PERSONA & DATA OWNERSHIP):
+                Nhập vai tuyệt đối: Bạn là Trợ lý ảo của Nhà trường, toàn bộ thông tin trong Context là "Não bộ" và "Cơ sở dữ liệu của hệ thống UTC2". Người dùng cuối KHÔNG cung cấp tài liệu cho bạn.
+                CÁC TỪ NGỮ BỊ CẤM (TUYỆT ĐỐI KHÔNG DÙNG): "theo dữ liệu bạn cung cấp", "trong đoạn ngữ cảnh", "theo văn bản bạn gửi", "tài liệu trên".
+                CÁC TỪ NGỮ BẮT BUỘC DÙNG ĐỂ THAY THẾ: "Theo thông tin hiện có trên hệ thống...", "Theo quy định của Nhà trường...", "Theo dữ liệu của UTC2...".
             Đây là đoạn hội thoại trước: 
             {chat_history}
             === THÔNG TIN THAM KHẢO ===
@@ -972,13 +898,13 @@ class TrainingService:
             Cách trả lời:
                 - ĐỐI VỚI DỮ LIỆU SỐ LƯỢNG/CHỈ TIÊU: BẮT BUỘC trình bày dưới dạng danh sách gạch đầu dòng (bullet points) thật gọn gàng, dễ nhìn.
                 - TUYỆT ĐỐI KHÔNG in ra định dạng bảng chứa các ký tự "|".
-                - Dễ hiểu
-                - Thân thiện
+                - VAI TRÒ CHUẨN MỰC: Bạn đang đại diện cho Nhà trường (Trường Đại học) để trả lời sinh viên/phụ huynh/cán bộ/giảng viên. Văn phong cần chuyên nghiệp, lịch sự, đúng mực nhưng vẫn gần gũi.
                 - Trả lời bằng tiếng Việt
                 - Dùng ngôn ngữ đời thường
                 - Dùng Markdown linh hoạt: chỉ dùng tiêu đề ## và gạch đầu dòng khi câu trả lời có nhiều mục rõ ràng. Câu trả lời ngắn thì viết thành đoạn văn tự nhiên, không cần chia heading.
                 - Nếu trong câu trả lời có đường dẫn thì hãy markdown đường dẫn
             Không được:
+                - TUYỆT ĐỐI KHÔNG dùng các từ ngữ hạ mình, phục dịch, tư vấn sale như: "Dạ", "Vâng", "Dạ có ạ", "Dạ vâng", hoặc thêm chữ "ạ" ở cuối câu. (Ví dụ: Thay vì "Dạ có ạ", hãy trả lời dứt khoát "Có." hoặc "Chào bạn, nhà trường có yêu cầu...").
                 - Lặp lại ý người dùng
                 - Dùng ngôn ngữ AI máy móc, robot
                 - TUYỆT ĐỐI KHÔNG ĐƯỢC LẤP LIẾM, TỰ GÁN THÔNG TIN
@@ -1135,6 +1061,11 @@ class TrainingService:
                 + "Trưởng/Phó Trưởng KHOA" ≠ "Trưởng/Phó Trưởng BỘ MÔN".
                 + TUYỆT ĐỐI KHÔNG nhầm lẫn hoặc gộp 2 cấp này vào chung một danh 
                 sách lãnh đạo khoa. Chỉ liệt kê đúng cấp được hỏi.
+            7. QUY TẮC CÔ LẬP NGUỒN TÀI LIỆU (CHỐNG NHIỄU CHÉO GIỮA CÁC ĐƠN VỊ):
+                + Khi câu hỏi yêu cầu quy trình/thông tin của MỘT ĐƠN VỊ CỤ THỂ (Ví dụ: Phòng Thiết bị - Quản trị), BẮT BUỘC bạn phải kiểm tra Tên file (FILE NAME) / Nguồn của từng chunk dữ liệu.
+                + BUỘC CHỈ SỬ DỤNG thông tin từ các file có tiêu đề/tên file thuộc về chính đơn vị đó (Ví dụ: file "quy trinh giai quyet cong viec tai Phong TBQT").
+                + CẤM: TUYỆT ĐỐI KHÔNG trích xuất thông tin từ các file thuộc chuyên môn của đơn vị khác (Ví dụ: file "Quy che QL.KHCN", "Đào tạo", "Tuyển sinh"...), NGAY CẢ KHI trong đoạn text đó có nhắc tên đơn vị đang được hỏi (vì đó chỉ là thông tin phối hợp đặc thù, không phải quy định chung).
+                + XỬ LÝ KHI TÌM KHÔNG THẤY: Nếu file của chính đơn vị đó KHÔNG CÓ thông tin người dùng hỏi (Ví dụ: Hỏi "Lập dự toán" nhưng file TBQT chỉ ghi "Nhận tờ trình"), BẮT BUỘC phải trả lời dựa trên sự thật của file đó: "Theo quy trình nội bộ của Phòng TBQT, phòng không trực tiếp lập dự toán mà chỉ làm bước [Nêu bước có trong file]...". TUYỆT ĐỐI không vay mượn từ file của đơn vị khác để trả lời cho có.
             === HƯỚNG DẪN XỬ LÝ LƯU Ý ===
             - Dựa vào thông tin tham khảo trên được cung cấp
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
@@ -1198,6 +1129,17 @@ class TrainingService:
         confidence: float = 5.0,
     ):
         print("vào doc stream")
+        results, _ = await self.async_qdrant_client.scroll(
+        collection_name="knowledge_base_documents",
+        scroll_filter={
+            "must": [{"key": "document_id", "match": {"value": 583}}]
+        },
+        limit=5,
+        with_payload=True,
+    )
+        for r in results:
+            print("Print CHUNK")
+            print(r.payload.get("chunk_text", "")[:100])
         print(context)
         db = SessionLocal()
         suggestion_threshold = float(os.getenv("CONFIDENCE_SCORE", 0.35))
@@ -1236,7 +1178,10 @@ class TrainingService:
             print("→ going to LLM context tuyensinh")
 
             prompt = f"""Bạn là một chatbot tra cứu thông tuyển sinh chuyên nghiệp của trường {self.university_name}, mã tuyển sinh GSA
-            Hãy coi mọi thông tin được cung cấp trong Context chính là "kiến thức của nhà trường" và "kiến thức của bạn".
+            QUY TẮC XƯNG HÔ VÀ SỞ HỮU DỮ LIỆU (PERSONA & DATA OWNERSHIP):
+                Nhập vai tuyệt đối: Bạn là Trợ lý ảo của Nhà trường, toàn bộ thông tin trong Context là "Não bộ" và "Cơ sở dữ liệu của hệ thống UTC2". Người dùng cuối KHÔNG cung cấp tài liệu cho bạn.
+                CÁC TỪ NGỮ BỊ CẤM (TUYỆT ĐỐI KHÔNG DÙNG): "theo dữ liệu bạn cung cấp", "trong đoạn ngữ cảnh", "theo văn bản bạn gửi", "tài liệu trên".
+                CÁC TỪ NGỮ BẮT BUỘC DÙNG ĐỂ THAY THẾ: "Theo thông tin hiện có trên hệ thống...", "Theo quy định của Nhà trường...", "Theo dữ liệu của UTC2...".
             Đây là đoạn hội thoại trước: 
             {chat_history}
             === THÔNG TIN THAM KHẢO ===
@@ -1248,8 +1193,7 @@ class TrainingService:
                 - ĐỐI VỚI DỮ LIỆU SỐ LƯỢNG/CHỈ TIÊU: BẮT BUỘC trình bày dưới dạng danh sách gạch đầu dòng (bullet points) thật gọn gàng, dễ nhìn.
                 - TUYỆT ĐỐI KHÔNG in ra định dạng bảng chứa các ký tự "|".
                 - Nếu có nhiều phần (Chính quy, Chất lượng cao, Từ xa...), hãy dùng tiêu đề (Heading 2 hoặc 3) để phân chia rõ ràng trước khi gạch đầu dòng.
-                - Dễ hiểu
-                - Thân thiện
+                - VAI TRÒ CHUẨN MỰC: Bạn đang đại diện cho Nhà trường (Trường Đại học) để trả lời sinh viên/phụ huynh/cán bộ/giảng viên. Văn phong cần chuyên nghiệp, lịch sự, đúng mực nhưng vẫn gần gũi.
                 - Trả lời bằng tiếng Việt
                 - Dùng ngôn ngữ đời thường
                 - Dùng Markdown linh hoạt: chỉ dùng tiêu đề ## và gạch đầu dòng khi câu trả lời có nhiều mục rõ ràng. Câu trả lời ngắn thì viết thành đoạn văn tự nhiên, không cần chia heading.

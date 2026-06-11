@@ -1225,6 +1225,7 @@ def api_approve_document(
             for i, chunk in enumerate(chunks):
                 embedding = service.embeddings.embed_query(chunk)
                 point_id = str(uuid.uuid4())
+                print(f"FILE NAME WHEN APPROVE: {bdoc.title}")
                 service.qdrant_client.upsert(
                     collection_name="knowledge_base_documents",
                     points=[
