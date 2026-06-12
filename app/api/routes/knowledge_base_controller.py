@@ -1082,6 +1082,7 @@ def submit_document_for_review(
 @router.post("/documents/{document_id}/approve")
 def api_approve_document(
     document_id: int,
+    is_allow_duplicate: bool = False,  
     db: Session = Depends(get_db),
     current_user: entities.Users = Depends(check_leader_permission),
 ):
@@ -1094,6 +1095,22 @@ def api_approve_document(
         raise HTTPException(
             status_code=400, detail="Only draft documents can be approved"
         )
+
+    # Duplicate check — chỉ chạy khi is_allow_duplicate=False
+    # if not is_allow_duplicate:
+    #     service = TrainingService()
+    #     duplicate_result = service.check_duplicate_on_approve(
+    #         bdoc=document,
+    #         db=db,
+    #     )
+    #     if duplicate_result["has_duplicate"]:
+    #         raise HTTPException(
+    #             status_code=409,
+    #             detail={
+    #                 "message": "Phát hiện tài liệu có nội dung tương tự đã tồn tại",
+    #                 "matches": duplicate_result["matches"],
+    #             }
+    #         )
 
     # Create task record
     task = entities.DocumentTask(

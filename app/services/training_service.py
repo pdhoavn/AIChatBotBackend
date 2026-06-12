@@ -3211,7 +3211,11 @@ class TrainingService:
                 continue
             chunk_text = (payload.get("chunk_text") or "").strip().replace("\n", " ")
             snippet_lines.append(f"{idx}. [DOC_ID={doc_id}] {chunk_text}")
-
+        self._debug_log(
+        f"citation_guard: snippet_lines={len(snippet_lines)} "
+        f"context_for_citation_len={len('\n'.join(snippet_lines))}",
+        trace_id,
+        )
         context_for_citation = "\n".join(snippet_lines)
         prompt = f"""
 Bạn là bộ máy trích dẫn nguồn.
@@ -3286,6 +3290,83 @@ Yêu cầu:
             "không rõ",
         ]
         return any(marker in text for marker in markers)
+
+    def check_duplicate_on_approve(
+    self,
+    bdoc,
+    db,
+    threshold: float = float(os.getenv("DUPLICATE_THRESHOLD", "0.82")),
+) -> dict:
+        # Lấy preview text để embed
+        ext = os.path.splitext(bdoc.file_path)[1].lower()
+        try:
+            file_bytes = self._read_file_bytes(bdoc, ext)
+            if ext in (".docx", ".doc"):
+                preview_text = DocumentProcessor.extract_text_from_docx_2(file_bytes)[:800]
+            elif ext == ".pdf":
+                preview_text = DocumentProcessor.extract_text_from_pdf_2(
+                    file_bytes, os.path.basename(bdoc.file_path)
+                )[:800]
+            else:
+                preview_text = (bdoc.content or "")[:800]
+        except Exception:
+            # Nếu không đọc được file → bỏ qua check, không block approve
+            return {"has_duplicate": False, "matches": []}
+
+        # Embed title + preview
+        query = f"{bdoc.title}\n{preview_text}"
+        embedding = self.embeddings.embed_query(query)
+
+        # Lấy audience_ids
+        audiences = (
+            db.query(TargetAudience)
+            .filter(TargetAudience.name.in_(bdoc.target_audiences or []))
+            .all()
+        )
+        audience_ids = [a.id for a in audiences]
+
+        # Search Qdrant — chỉ so chunk_index=0 (chunk đại diện cho doc)
+        from qdrant_client.models import Filter, FieldCondition, MatchValue, MatchAny
+
+        results = self.qdrant_client.search(
+            collection_name="knowledge_base_documents",
+            query_vector=embedding,
+            query_filter=Filter(
+                must=[
+                    FieldCondition(
+                        key="chunk_index",
+                        match=MatchValue(value=0)
+                    ),
+                    FieldCondition(
+                        key="audience_ids",
+                        match=MatchAny(any=audience_ids)
+                    ),
+                ],
+                must_not=[
+                    # Loại chính doc đang approve (trường hợp re-approve)
+                    FieldCondition(
+                        key="document_id",
+                        match=MatchValue(value=bdoc.document_id)
+                    )
+                ]
+            ),
+            limit=5,
+            with_payload=True,
+        )
+
+        matches = []
+        for r in results:
+            if r.score >= threshold:
+                matches.append({
+                    "document_id": r.payload.get("document_id"),
+                    "file_name": r.payload.get("file_name"),
+                    "similarity_score": round(r.score, 3),
+                })
+
+        return {
+            "has_duplicate": len(matches) > 0,
+            "matches": matches,
+        }
 
     async def search_training_qa(
         self,
