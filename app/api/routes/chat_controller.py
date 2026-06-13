@@ -395,7 +395,7 @@ async def stream_chat(
     user_id = body.user_id
     audience_id = body.audience_id
     intent_id_from_client = body.intent_id
-
+    top_k = os.getenv("TOP_K", 5)
     # Guest user/session có ID random không tồn tại trong DB
     # → reset None để service tự tạo mới (giống WS cũ)
     from app.models.entities import Users, ChatSession
@@ -425,18 +425,21 @@ async def stream_chat(
             media_type="text/event-stream",
         )
     if audience_id != 4:
+            print(f"checking admission")
             check_admission = await service.llm_admission_check(message)
             if check_admission:
                 audience_id = 4
+                print(f"check admission complete")
                 check_listing = await service.llm_listing_check(message)
                 if check_listing:
+                    print(f"check admission and top K complete")
                     top_k = 20
     # Tạo session nếu chưa có hoặc không tồn tại trong DB
     if not session_id:
         session_id = sse_service.create_chat_session(user_id, "chatbot")
 
     async def event_generator():
-        top_k = os.getenv("TOP_K", 5)
+        local_top_k = top_k
         # Gửi session info
         yield _sse_event({"event": "session", "session_id": session_id})
 
@@ -449,7 +452,9 @@ async def stream_chat(
         
         # --- enrich_query ---
         if audience_id == 4:
-            # top_k = 10
+            check_listing = await service.llm_listing_check(message)
+            if check_listing:
+                local_top_k = 20
             enriched_query = await sse_service.enrich_query_tuyensinh(
                 session_id, message
             )
@@ -556,7 +561,7 @@ async def stream_chat(
                     enriched_query,
                     audience_ids=audience_id,
                     intent_id=intent_id_from_client,
-                    top_k=top_k,
+                    top_k=local_top_k,
                     trace_id=trace_id,
                     stage="document_recheck_search",
                     query_embedding=result.get("query_embedding"),
@@ -626,6 +631,7 @@ async def stream_chat(
             and audience_id == 4
         ):
             answer_text = ""
+            print(f"top K tuyen sinh: {local_top_k}")
             print(f"SCORE BEFORE DOC: {confidence}")
             async for chunk in sse_service.stream_response_from_context_tuyensinh(
                 enriched_query,

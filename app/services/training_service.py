@@ -497,6 +497,7 @@ class TrainingService:
             + TRƯỜNG HỢP 2 (Dữ liệu dùng chung): NẾU câu hỏi liên quan đến QUY TRÌNH & THỦ TỤC (Ví dụ: Hồ sơ, Giấy tờ, Các bước nộp, Lệ phí, Tiêu chuẩn cộng điểm, Học phí, Ký túc xá, Quy chế). -> BẮT BUỘC GIỮ NGUYÊN câu hỏi gốc (TUYỆT ĐỐI KHÔNG thêm GSA hay Phân hiệu).
             + TRƯỜNG HỢP NGOẠI LỆ: Nếu câu hỏi quá ngắn hoặc không rõ thuộc trường hợp nào, hãy GIỮ NGUYÊN câu hỏi gốc để đảm bảo an toàn.
         7. MẶC ĐỊNH HỆ ĐÀO TẠO: Nếu người dùng hỏi chung chung về tuyển sinh, điểm chuẩn, tiêu chí, xét học bạ... mà KHÔNG nhắc đến hệ đào tạo nào, BẮT BUỘC bổ sung cụm từ "Hệ Đại học Chính quy" vào câu truy vấn.
+            - Có các hệ đào tạo: đại học chính quy, vừa làm vừa học, đào tạo từ xa, liên thông
         8. DỊCH THUẬT NGỮ TUYỂN SINH (Rất quan trọng):
             - Nhắc đến "học bạ" hoặc "kết quả học tập" -> BẮT BUỘC chèn thêm "Phương thức 2 (PT2)".
             - Nhắc đến "đánh giá năng lực" hoặc "ĐGNL" -> BẮT BUỘC chèn thêm "Phương thức 3 (PT3)".
@@ -506,7 +507,8 @@ class TrainingService:
             Trường hợp 1: Nếu người dùng KHÔNG nhắc đến một năm cụ thể nào (ví dụ: 2024, 2025...), bạn BẮT BUỘC phải tự động chỉ duy nhất chèn thêm các từ khóa: "mới nhất", "dự kiến", "năm nay" vào câu truy vấn.
 
             Trường hợp 2: Nếu người dùng CÓ nhắc đến một năm cụ thể (ví dụ: "chỉ tiêu năm 2024"), hãy giữ nguyên mốc thời gian đó và tuyệt đối không thêm chữ "mới nhất".
-
+        10. NẾU người dùng hỏi chung chung về "chỉ tiêu", "điểm chuẩn" mà KHÔNG CHỈ ĐỊNH ĐÍCH DANH MỘT NGÀNH CỤ THỂ NÀO, BẮT BUỘC bạn phải tự động chèn thêm cụm từ "của tất cả các ngành ở 1. Các chương trình đào tạo chuẩn, 2. Các chương trình đào tạo chuẩn thuộc lĩnh vực vi mạch - bán dẫn, 3. Các chương trình đào tạo chuẩn thuộc lĩnh vực đường sắt tốc độ cao và đường sắt hiện đại 
+, 4. Các chương trình đào tạo chất lượng cao" vào câu truy vấn viết lại.
         === QUY TẮC MỞ RỘNG TỪ ĐỒNG NGHĨA (ƯU TIÊN TỐI CAO) ===
         Nếu câu hỏi của người dùng chứa BẤT KỲ TỪ NÀO thuộc một trong các Nhóm dưới đây, BẮT BUỘC phải viết lại câu hỏi bằng cách chèn thêm TẤT CẢ các từ còn lại cùng Nhóm đó vào câu. 
         (Quy tắc này BẮT BUỘC THỰC HIỆN, ghi đè lên quy tắc "Giữ nguyên nếu đã rõ ràng").
