@@ -407,12 +407,27 @@ class TrainingService:
             BẮT BUỘC bổ sung thêm các cụm từ: chức vụ, phòng ban
             Ví dụ: > - User hỏi: "ông đặng văn ơn có chức vụ gì"
             Bạn phải sinh ra Query: Tìm chức vụ, đơn vị công tác và phòng ban của "Đặng Văn Ơn"
-        Quy tắc điều hướng chủ thể truy vấn (Default Routing):
+        8. Quy tắc điều hướng chủ thể truy vấn (Default Routing):
             - Nhận diện câu hỏi của người dùng. NẾU người dùng hỏi về các nghiệp vụ "mua sắm", "quy trình mua sắm thiết bị" một cách CHUNG CHUNG (nghĩa là trong câu hỏi KHÔNG có tên của bất kỳ phòng ban nào):
                 + BẮT BUỘC tự động bổ sung cụm từ "của Phòng Thiết bị - Quản trị" vào câu truy vấn được làm giàu.
                 + Ví dụ: Query gốc: "Cho tôi biết quy trình mua sắm thiết bị" -> Query mới: "Quy trình mua sắm thiết bị của Phòng Thiết bị - Quản trị".
             - NẾU người dùng đã chỉ định đích danh một phòng ban trong câu hỏi (Ví dụ: "mua sắm bên phòng khoa học công nghệ", "phòng KHCN mua sắm ra sao"):
                 + GIỮ NGUYÊN chủ đích của người dùng, TUYỆT ĐỐI KHÔNG tự ý chèn thêm tên Phòng Thiết bị - Quản trị vào truy vấn.
+        9. - NHÓM CƠ SỞ HCM: "Phân hiệu", "UTC2", "Cơ sở II", "Cơ sở 2", "CSII", "CS2", "TP.HCM", "Phân hiệu TP.HCM", "cơ sở tại thành phố"
+            → Khi gặp bất kỳ từ nào, thêm vào query: "Cơ sở II Phân hiệu TP.HCM"
+            - NHÓM CƠ SỞ HN: "Trụ sở chính", "Cơ sở I", "Hà Nội", "GHA", 
+            "cơ sở Hà Nội"
+            → Khi gặp bất kỳ từ nào, thêm vào query: "Cơ sở I Hà Nội trụ sở chính"
+
+            Ví dụ:
+            - User hỏi: "quy định thi tại Phân hiệu"
+            → Query: "quy định công tác thi kết thúc học phần tại Cơ sở II Phân hiệu TP.HCM"
+
+            - User hỏi: "UTC2 có quy định gì về nghỉ phép"  
+            → Query: "quy định nghỉ phép viên chức tại Cơ sở II Phân hiệu UTC2"
+
+            - User hỏi KHÔNG nhắc cơ sở nào:
+            → KHÔNG tự thêm bất kỳ tên cơ sở nào
         === QUY TẮC MỞ RỘNG TỪ ĐỒNG NGHĨA (ƯU TIÊN TỐI CAO) ===
         Nếu câu hỏi của người dùng chứa BẤT KỲ TỪ NÀO thuộc một trong các Nhóm dưới đây, BẮT BUỘC phải viết lại câu hỏi bằng cách chèn thêm TẤT CẢ các từ còn lại cùng Nhóm đó vào câu. 
         (Quy tắc này BẮT BUỘC THỰC HIỆN, ghi đè lên quy tắc "Giữ nguyên nếu đã rõ ràng").
@@ -450,6 +465,13 @@ class TrainingService:
         - Nhóm Quy chế: "quy định", "quy chế", "nội quy", "điều lệ", "quy trình", "hướng dẫn", "thông tư", "nghị định"
         - Nhóm Giấy tờ: "hồ sơ", "giấy tờ", "tài liệu", "đơn", "văn bản", "minh chứng", "chứng từ"
         - Nhóm Thủ tục: "xin", "đăng ký", "nộp đơn", "đề nghị", "làm thủ tục", "nộp hồ sơ"
+        6. NHÓM THI / KIỂM TRA:
+        - Nhóm Lịch thi: "lịch thi", "xếp lịch thi", "thông báo thi", "kế hoạch thi", 
+        "lịch thi kết thúc học phần", "thời gian thi", "tổ chức thi"
+        - Nhóm Thời hạn: "trước bao nhiêu ngày", "trước kỳ thi", "trước ngày thi", 
+        "thời gian thông báo", "bao nhiêu ngày trước"
+        - Nhóm Loại thi: "thi lần 1", "thi lại", "thi học lại", "thi kết thúc học phần", 
+        "thi chính", "thi phụ"
         """
         # THÊM LOG NÀY
         print(f"[ENRICH] chat_history length={len(str(chat_history))}")
@@ -514,7 +536,7 @@ class TrainingService:
 
             Trường hợp 2: Nếu người dùng CÓ nhắc đến một năm cụ thể (ví dụ: "chỉ tiêu năm 2024"), hãy giữ nguyên mốc thời gian đó và tuyệt đối không thêm chữ "mới nhất".
         10. NẾU người dùng hỏi chung chung về "chỉ tiêu", "điểm chuẩn" mà KHÔNG CHỈ ĐỊNH ĐÍCH DANH MỘT NGÀNH CỤ THỂ NÀO, BẮT BUỘC bạn phải tự động chèn thêm cụm từ "của tất cả các ngành ở 1. Các chương trình đào tạo chuẩn, 2. Các chương trình đào tạo chuẩn thuộc lĩnh vực vi mạch - bán dẫn, 3. Các chương trình đào tạo chuẩn thuộc lĩnh vực đường sắt tốc độ cao và đường sắt hiện đại 
-, 4. Các chương trình đào tạo chất lượng cao" vào câu truy vấn viết lại.
+, 4. Các chương trình đào tạo chất lượng cao ở Tuyển sinh và đào tạo tại Phân hiệu TP.HCM, mã trường GSA" vào câu truy vấn viết lại.
         === QUY TẮC MỞ RỘNG TỪ ĐỒNG NGHĨA (ƯU TIÊN TỐI CAO) ===
         Nếu câu hỏi của người dùng chứa BẤT KỲ TỪ NÀO thuộc một trong các Nhóm dưới đây, BẮT BUỘC phải viết lại câu hỏi bằng cách chèn thêm TẤT CẢ các từ còn lại cùng Nhóm đó vào câu. 
         (Quy tắc này BẮT BUỘC THỰC HIỆN, ghi đè lên quy tắc "Giữ nguyên nếu đã rõ ràng").
@@ -1241,6 +1263,7 @@ class TrainingService:
                 - Khi trích xuất thông tin từ Context, CHỈ ĐƯỢC PHÉP giữ lại những quy định/thủ tục ÁP DỤNG ĐÚNG cho điều kiện của người dùng.
                 - LỆNH CẤM: TUYỆT ĐỐI KHÔNG copy thừa thãi các quy định dành cho đối tượng khác. (Ví dụ: Nếu người dùng hỏi cách đăng ký cho thí sinh "tốt nghiệp năm 2026", CẤM liệt kê thủ tục dành riêng cho thí sinh "tốt nghiệp trước năm 2026", trừ khi thủ tục đó là quy định chung cho tất cả).
                 - Hướng dẫn gom nhóm: Nếu có các trường hợp ngoại lệ (ví dụ: dùng minh chứng điểm cộng, xét tuyển thẳng), phải ghi rõ "CHỈ ÁP DỤNG NẾU bạn thuộc diện..." để người dùng không bị hiểu lầm.
+            7. Khi trả lời câu hỏi về Phân hiệu TP.HCM (mã GSA), chỉ được sử dụng các mã xét tuyển bắt đầu bằng "GSA_". TUYỆT ĐỐI KHÔNG được tự thay thế prefix "GHA" thành "GSA".
             === HƯỚNG DẪN XỬ LÝ ===
             - Dựa vào thông tin tham khảo trên được cung cấp
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
