@@ -407,6 +407,12 @@ class TrainingService:
             BẮT BUỘC bổ sung thêm các cụm từ: chức vụ, phòng ban
             Ví dụ: > - User hỏi: "ông đặng văn ơn có chức vụ gì"
             Bạn phải sinh ra Query: Tìm chức vụ, đơn vị công tác và phòng ban của "Đặng Văn Ơn"
+        Quy tắc điều hướng chủ thể truy vấn (Default Routing):
+            - Nhận diện câu hỏi của người dùng. NẾU người dùng hỏi về các nghiệp vụ "mua sắm", "quy trình mua sắm thiết bị" một cách CHUNG CHUNG (nghĩa là trong câu hỏi KHÔNG có tên của bất kỳ phòng ban nào):
+                + BẮT BUỘC tự động bổ sung cụm từ "của Phòng Thiết bị - Quản trị" vào câu truy vấn được làm giàu.
+                + Ví dụ: Query gốc: "Cho tôi biết quy trình mua sắm thiết bị" -> Query mới: "Quy trình mua sắm thiết bị của Phòng Thiết bị - Quản trị".
+            - NẾU người dùng đã chỉ định đích danh một phòng ban trong câu hỏi (Ví dụ: "mua sắm bên phòng khoa học công nghệ", "phòng KHCN mua sắm ra sao"):
+                + GIỮ NGUYÊN chủ đích của người dùng, TUYỆT ĐỐI KHÔNG tự ý chèn thêm tên Phòng Thiết bị - Quản trị vào truy vấn.
         === QUY TẮC MỞ RỘNG TỪ ĐỒNG NGHĨA (ƯU TIÊN TỐI CAO) ===
         Nếu câu hỏi của người dùng chứa BẤT KỲ TỪ NÀO thuộc một trong các Nhóm dưới đây, BẮT BUỘC phải viết lại câu hỏi bằng cách chèn thêm TẤT CẢ các từ còn lại cùng Nhóm đó vào câu. 
         (Quy tắc này BẮT BUỘC THỰC HIỆN, ghi đè lên quy tắc "Giữ nguyên nếu đã rõ ràng").
@@ -969,6 +975,7 @@ class TrainingService:
                 
                 Phòng Thiết bị - Quản trị
                 Quản lý cơ sở vật chất, trang thiết bị, công trình phục vụ hoạt động của trường.
+                Mua sắm trang thiết bị.
                 Phụ trách công tác quản trị, sửa chữa, bảo trì và vận hành các hạng mục của nhà trường.
                 Địa chỉ: Nhà D7, số 450 Lê Văn Việt, P. Tăng Nhơn Phú, TP. Hồ Chí Minh
                 Email: thietbiquantri@utc2.edu.vn
@@ -1063,11 +1070,12 @@ class TrainingService:
                 + "Trưởng/Phó Trưởng KHOA" ≠ "Trưởng/Phó Trưởng BỘ MÔN".
                 + TUYỆT ĐỐI KHÔNG nhầm lẫn hoặc gộp 2 cấp này vào chung một danh 
                 sách lãnh đạo khoa. Chỉ liệt kê đúng cấp được hỏi.
-            7. QUY TẮC CÔ LẬP NGUỒN TÀI LIỆU (CHỐNG NHIỄU CHÉO GIỮA CÁC ĐƠN VỊ):
-                + Khi câu hỏi yêu cầu quy trình/thông tin của MỘT ĐƠN VỊ CỤ THỂ (Ví dụ: Phòng Thiết bị - Quản trị), BẮT BUỘC bạn phải kiểm tra Tên file (FILE NAME) / Nguồn của từng chunk dữ liệu.
-                + BUỘC CHỈ SỬ DỤNG thông tin từ các file có tiêu đề/tên file thuộc về chính đơn vị đó (Ví dụ: file "quy trinh giai quyet cong viec tai Phong TBQT").
-                + CẤM: TUYỆT ĐỐI KHÔNG trích xuất thông tin từ các file thuộc chuyên môn của đơn vị khác (Ví dụ: file "Quy che QL.KHCN", "Đào tạo", "Tuyển sinh"...), NGAY CẢ KHI trong đoạn text đó có nhắc tên đơn vị đang được hỏi (vì đó chỉ là thông tin phối hợp đặc thù, không phải quy định chung).
-                + XỬ LÝ KHI TÌM KHÔNG THẤY: Nếu file của chính đơn vị đó KHÔNG CÓ thông tin người dùng hỏi (Ví dụ: Hỏi "Lập dự toán" nhưng file TBQT chỉ ghi "Nhận tờ trình"), BẮT BUỘC phải trả lời dựa trên sự thật của file đó: "Theo quy trình nội bộ của Phòng TBQT, phòng không trực tiếp lập dự toán mà chỉ làm bước [Nêu bước có trong file]...". TUYỆT ĐỐI không vay mượn từ file của đơn vị khác để trả lời cho có.
+            9. QUY TẮC CÔ LẬP NGỮ CẢNH VÀ CHỦ THỂ (CHỐNG NHIỄU CHÉO GIỮA CÁC ĐƠN VỊ):
+                + Khi câu hỏi yêu cầu quy trình/thông tin của MỘT ĐƠN VỊ CỤ THỂ (Ví dụ: Phòng Thiết bị - Quản trị), BẮT BUỘC bạn phải phân tích nội dung của từng chunk dữ liệu theo các quy tắc khắt khe sau:
+                    1. ĐÁNH GIÁ CHỦ THỂ CỐT LÕI (CORE SUBJECT): BUỘC CHỈ SỬ DỤNG thông tin từ các chunk mà nội dung của nó đang tập trung mô tả quy định, chức năng hoặc quy trình CHÍNH CHỦ của đơn vị đó (Ví dụ: chunk bắt đầu hoặc có nội dung xoay quanh "Theo quy trình nội bộ của Phòng TBQT...", "Nhiệm vụ của Phòng TBQT...").
+                    2. CẤM VAY MƯỢN TỪ NGỮ CẢNH PHỐI HỢP: TUYỆT ĐỐI KHÔNG trích xuất hành động của đơn vị được hỏi nếu hành động đó nằm rải rác trong một chunk mà chủ đề chính thuộc về chuyên môn của đơn vị khác (Ví dụ: Chunk đang mô tả quy trình "Quản lý đề tài Khoa học" của Phòng KHCN, trong đó có chèn một câu "Phòng TBQT kiểm tra quy trình mua sắm"). Khẳng định: Đây chỉ là thông tin phối hợp đặc thù, KHÔNG PHẢI quy trình chuẩn hay chức năng độc lập của đơn vị đang được hỏi.
+                    3. XỬ LÝ KHI TÌM KHÔNG THẤY: Nếu trong các chunk thỏa mãn điều kiện "CHỦ THỂ CỐT LÕI" ở trên KHÔNG CÓ thông tin người dùng hỏi (Ví dụ: Hỏi "Lập dự toán" nhưng chunk chính chủ của Phòng TBQT chỉ ghi "Nhận tờ trình"), BẮT BUỘC phải trả lời dựa trên sự thật của giới hạn dữ liệu đó: "Theo quy định/chức năng chính của Phòng TBQT được ghi nhận, phòng không trực tiếp thực hiện [Bước người dùng hỏi] mà chỉ phụ trách [Nêu bước có trong chunk]...". TUYỆT ĐỐI không nhặt nhạnh các hành động phối hợp từ các chunk khác để đắp vào câu trả lời cho có.
+            10. Tuyệt đối không sử dụng các thực thể nằm trong danh sách văn bản bị thay thế/bãi bỏ để làm kết quả cho văn bản đang có hiệu lực".
             === HƯỚNG DẪN XỬ LÝ LƯU Ý ===
             - Dựa vào thông tin tham khảo trên được cung cấp
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
