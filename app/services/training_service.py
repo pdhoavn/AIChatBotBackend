@@ -361,17 +361,8 @@ class TrainingService:
         print(f"lich su chat: {chat_history}")
         prompt = f"""
         Nhiệm vụ của bạn là VIẾT LẠI câu hỏi mới nhất của người dùng thành một truy vấn ĐỘC LẬP, NGẮN GỌN và ĐẦY ĐỦ NGỮ NGHĨA để tra cứu trong Vector Database.
-
-        Cuộc hội thoại gần đây:
-        {chat_history}
-
-        Câu hỏi phản hồi mới nhất của người dùng:
-        "{user_message}"
-
         NHIỆM VỤ:
         Viết lại câu hỏi mới nhất thành một câu truy vấn ĐỘC LẬP, ĐẦY ĐỦ NGỮ NGHĨA để máy tìm kiếm (Vector Search) có thể hiểu được chính xác mà không cần đọc lại lịch sử.
-        
-
         Ví dụ:
         - "quy trình nghỉ phép đối với cán bộ" 
         → rewrite: "chế độ nghỉ phép của viên chức giảng viên nhân viên"
@@ -472,6 +463,11 @@ class TrainingService:
         "thời gian thông báo", "bao nhiêu ngày trước"
         - Nhóm Loại thi: "thi lần 1", "thi lại", "thi học lại", "thi kết thúc học phần", 
         "thi chính", "thi phụ"
+        Cuộc hội thoại gần đây:
+        {chat_history}
+
+        Câu hỏi phản hồi mới nhất của người dùng:
+        "{user_message}"
         """
         # THÊM LOG NÀY
         print(f"[ENRICH] chat_history length={len(str(chat_history))}")
@@ -499,11 +495,6 @@ class TrainingService:
         prompt = f"""
         Bạn là một trợ lý chuẩn hóa truy vấn cho chatbot RAG tư vấn tuyển sinh của {self.university_name}.
 
-        Cuộc hội thoại gần đây:
-        {chat_history}
-
-        Phản hồi mới nhất của người dùng:
-        "{user_message}"
 
         NHIỆM VỤ:
         HƯỚNG DẪN:
@@ -535,8 +526,8 @@ class TrainingService:
             Trường hợp 1: Nếu người dùng KHÔNG nhắc đến một năm cụ thể nào (ví dụ: 2024, 2025...), bạn BẮT BUỘC phải tự động chỉ duy nhất chèn thêm các từ khóa: "mới nhất", "dự kiến", "năm nay" vào câu truy vấn.
 
             Trường hợp 2: Nếu người dùng CÓ nhắc đến một năm cụ thể (ví dụ: "chỉ tiêu năm 2024"), hãy giữ nguyên mốc thời gian đó và tuyệt đối không thêm chữ "mới nhất".
-        10. NẾU người dùng hỏi chung chung về "chỉ tiêu", "điểm chuẩn" mà KHÔNG CHỈ ĐỊNH ĐÍCH DANH MỘT NGÀNH CỤ THỂ NÀO, BẮT BUỘC bạn phải tự động chèn thêm cụm từ "của tất cả các ngành ở 1. Các chương trình đào tạo chuẩn, 2. Các chương trình đào tạo chuẩn thuộc lĩnh vực vi mạch - bán dẫn, 3. Các chương trình đào tạo chuẩn thuộc lĩnh vực đường sắt tốc độ cao và đường sắt hiện đại 
-, 4. Các chương trình đào tạo chất lượng cao ở Tuyển sinh và đào tạo tại Phân hiệu TP.HCM, mã trường GSA" vào câu truy vấn viết lại.
+        10. NẾU người dùng hỏi chung chung về "chỉ tiêu", "điểm chuẩn" mà KHÔNG CHỈ ĐỊNH ĐÍCH DANH MỘT NGÀNH HAY HỆ ĐÀO TẠO CỤ THỂ NÀO, BẮT BUỘC bạn phải tự động chèn thêm cụm từ "đầy đủ của tất cả các ngành ở 1. Các chương trình đào tạo chuẩn GSA_01 đến GSA_23, 2. Các chương trình đào tạo chuẩn thuộc lĩnh vực vi mạch - bán dẫn GSA_06 và GSA_13BD, 3. Các chương trình đào tạo chuẩn thuộc lĩnh vực đường sắt tốc độ cao và đường sắt hiện đại 
+GSA_18DS và GSA_14DS, 4. Các chương trình đào tạo chất lượng cao ở Tuyển sinh" vào câu truy vấn viết lại và không viết gì thêm sau đó.
         === QUY TẮC MỞ RỘNG TỪ ĐỒNG NGHĨA (ƯU TIÊN TỐI CAO) ===
         Nếu câu hỏi của người dùng chứa BẤT KỲ TỪ NÀO thuộc một trong các Nhóm dưới đây, BẮT BUỘC phải viết lại câu hỏi bằng cách chèn thêm TẤT CẢ các từ còn lại cùng Nhóm đó vào câu. 
         (Quy tắc này BẮT BUỘC THỰC HIỆN, ghi đè lên quy tắc "Giữ nguyên nếu đã rõ ràng").
@@ -574,6 +565,11 @@ class TrainingService:
         - Nhóm Quy chế: "quy định", "quy chế", "nội quy", "điều lệ", "quy trình", "hướng dẫn", "thông tư", "nghị định"
         - Nhóm Giấy tờ: "hồ sơ", "giấy tờ", "tài liệu", "đơn", "văn bản", "minh chứng", "chứng từ"
         - Nhóm Thủ tục: "xin", "đăng ký", "nộp đơn", "đề nghị", "làm thủ tục", "nộp hồ sơ"
+        Cuộc hội thoại gần đây:
+        {chat_history}
+
+        Phản hồi mới nhất của người dùng:
+        "{user_message}"
         """
         # assume async predict exists
         enriched = await self.control_llm.ainvoke(prompt)
@@ -918,12 +914,6 @@ class TrainingService:
                 Nhập vai tuyệt đối: Bạn là Trợ lý ảo của Nhà trường, toàn bộ thông tin trong Context là "Não bộ" và "Cơ sở dữ liệu của hệ thống UTC2". Người dùng cuối KHÔNG cung cấp tài liệu cho bạn.
                 CÁC TỪ NGỮ BỊ CẤM (TUYỆT ĐỐI KHÔNG DÙNG): "theo dữ liệu bạn cung cấp", "trong đoạn ngữ cảnh", "theo văn bản bạn gửi", "tài liệu trên".
                 CÁC TỪ NGỮ BẮT BUỘC DÙNG ĐỂ THAY THẾ: "Theo thông tin hiện có trên hệ thống...", "Theo quy định của Nhà trường...", "Theo dữ liệu của UTC2...".
-            Đây là đoạn hội thoại trước: 
-            {chat_history}
-            === THÔNG TIN THAM KHẢO ===
-            {context}
-            === CÂU HỎI ===
-            {query}
             === PHONG CÁCH TRẢ LỜI ===
             Cách trả lời:
                 - ĐỐI VỚI DỮ LIỆU SỐ LƯỢNG/CHỈ TIÊU: BẮT BUỘC trình bày dưới dạng danh sách gạch đầu dòng (bullet points) thật gọn gàng, dễ nhìn.
@@ -1098,6 +1088,7 @@ class TrainingService:
                     2. CẤM VAY MƯỢN TỪ NGỮ CẢNH PHỐI HỢP: TUYỆT ĐỐI KHÔNG trích xuất hành động của đơn vị được hỏi nếu hành động đó nằm rải rác trong một chunk mà chủ đề chính thuộc về chuyên môn của đơn vị khác (Ví dụ: Chunk đang mô tả quy trình "Quản lý đề tài Khoa học" của Phòng KHCN, trong đó có chèn một câu "Phòng TBQT kiểm tra quy trình mua sắm"). Khẳng định: Đây chỉ là thông tin phối hợp đặc thù, KHÔNG PHẢI quy trình chuẩn hay chức năng độc lập của đơn vị đang được hỏi.
                     3. XỬ LÝ KHI TÌM KHÔNG THẤY: Nếu trong các chunk thỏa mãn điều kiện "CHỦ THỂ CỐT LÕI" ở trên KHÔNG CÓ thông tin người dùng hỏi (Ví dụ: Hỏi "Lập dự toán" nhưng chunk chính chủ của Phòng TBQT chỉ ghi "Nhận tờ trình"), BẮT BUỘC phải trả lời dựa trên sự thật của giới hạn dữ liệu đó: "Theo quy định/chức năng chính của Phòng TBQT được ghi nhận, phòng không trực tiếp thực hiện [Bước người dùng hỏi] mà chỉ phụ trách [Nêu bước có trong chunk]...". TUYỆT ĐỐI không nhặt nhạnh các hành động phối hợp từ các chunk khác để đắp vào câu trả lời cho có.
             10. Tuyệt đối không sử dụng các thực thể nằm trong danh sách văn bản bị thay thế/bãi bỏ để làm kết quả cho văn bản đang có hiệu lực".
+            11. NGHIÊM CẤM: Nếu trong tài liệu không có dòng nào khớp chính xác với tên hồ sơ/tài liệu mà người dùng hỏi, BẮT BUỘC phải trả lời  "Không tìm thấy thông tin cụ thể về [tên tài liệu] trong tài liệu được cung cấp" thay vì dùng thông tin gần giống để thay thế.
             === HƯỚNG DẪN XỬ LÝ LƯU Ý ===
             - Dựa vào thông tin tham khảo trên được cung cấp
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
@@ -1116,6 +1107,12 @@ class TrainingService:
                 mà người dùng có thể quan tâm tiếp theo (điểm chuẩn, học bổng, 
                 chuyên ngành, học phí...). Thay đổi gợi ý theo ngữ cảnh câu hỏi, 
                 không lặp lại cùng một câu mẫu.
+            Đây là đoạn hội thoại trước: 
+            {chat_history}
+            === THÔNG TIN THAM KHẢO ===
+            {context}
+            === CÂU HỎI ===
+            {query}
             """
             full_response = ""
             async for chunk in self.answer_llm.astream(prompt):
@@ -1214,12 +1211,6 @@ class TrainingService:
                 Nhập vai tuyệt đối: Bạn là Trợ lý ảo của Nhà trường, toàn bộ thông tin trong Context là "Não bộ" và "Cơ sở dữ liệu của hệ thống UTC2". Người dùng cuối KHÔNG cung cấp tài liệu cho bạn.
                 CÁC TỪ NGỮ BỊ CẤM (TUYỆT ĐỐI KHÔNG DÙNG): "theo dữ liệu bạn cung cấp", "trong đoạn ngữ cảnh", "theo văn bản bạn gửi", "tài liệu trên".
                 CÁC TỪ NGỮ BẮT BUỘC DÙNG ĐỂ THAY THẾ: "Theo thông tin hiện có trên hệ thống...", "Theo quy định của Nhà trường...", "Theo dữ liệu của UTC2...".
-            Đây là đoạn hội thoại trước: 
-            {chat_history}
-            === THÔNG TIN THAM KHẢO ===
-            {context}
-            === CÂU HỎI ===
-            {query}
             === PHONG CÁCH TRẢ LỜI ===
             Cách trả lời:
                 - ĐỐI VỚI DỮ LIỆU SỐ LƯỢNG/CHỈ TIÊU: BẮT BUỘC trình bày dưới dạng danh sách gạch đầu dòng (bullet points) thật gọn gàng, dễ nhìn.
@@ -1305,6 +1296,12 @@ class TrainingService:
                 chuyên ngành, học phí...). Thay đổi gợi ý theo ngữ cảnh câu hỏi, 
                 không lặp lại cùng một câu mẫu. 
             - Nếu context không có data phù hợp để trả lời người dùng thì cuối câu kèm theo [[user/setaudience]]
+            Đây là đoạn hội thoại trước: 
+            {chat_history}
+            === THÔNG TIN THAM KHẢO ===
+            {context}
+            === CÂU HỎI ===
+            {query}
             """
             full_response = ""
             async for chunk in self.answer_llm.astream(prompt):

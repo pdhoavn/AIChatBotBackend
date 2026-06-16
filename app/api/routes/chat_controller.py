@@ -452,12 +452,12 @@ async def stream_chat(
         
         # --- enrich_query ---
         if audience_id == 4:
-            check_listing = await service.llm_listing_check(message)
-            if check_listing:
-                local_top_k = 20
             enriched_query = await sse_service.enrich_query_tuyensinh(
                 session_id, message
             )
+            check_listing = await service.llm_listing_check(enriched_query)
+            if check_listing:
+                local_top_k = 30
         else:
             enriched_query = await sse_service.enrich_query(session_id, message)
       
