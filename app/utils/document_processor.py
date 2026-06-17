@@ -182,33 +182,46 @@ class DocumentProcessor:
         def detect_heading_with_text(para) -> tuple[str | None, str]:
             """Trả về (prefix, text_để_dùng_làm_heading)"""
             text = para.text.strip()
-            bold = is_bold(para)
-
-            if not text or not bold:
+            if not text:
                 return None, text
 
+            bold = is_bold(para)
             is_numbered = bool(re.match(r"^([IVX]+\.|\d+\.|\d+\.\d+)\s+\S", text))
+
+            # 1. BỘ LỌC NHANH: Không in đậm VÀ không đánh số -> Chắc chắn là text thường
+            if not bold and not is_numbered:
+                return None, text
+
             heading_text = text
 
-            if is_numbered and len(text) > 150:
-                colon_pos = text.find(":")
-                if 0 < colon_pos < 120:
-                    heading_text = text[:colon_pos].strip()
-                else:
+            # 2. LUỒNG ƯU TIÊN: Xử lý đoạn có Đánh Số (bất kể có in đậm hay không)
+            if is_numbered:
+                # Cơ chế chống nhận diện nhầm đoạn văn dài thành Heading
+                if len(text) > 150:
+                    colon_pos = text.find(":")
+                    if 0 < colon_pos < 120:
+                        heading_text = text[:colon_pos].strip()
+                    else:
+                        return None, text
+                
+                # Chốt chặn phụ: Nếu đã cắt rồi mà vẫn quá dài, hoặc có dấu ':' sát đầu (như "1. Lưu ý:")
+                if len(heading_text) > 150 or ":" in heading_text[:40]:
                     return None, text
 
-            if len(heading_text) > 150 or ":" in heading_text[:40]:
-                return None, text
+                # Phân loại Heading theo cấp độ số
+                if re.match(r"^[IVX]+\.\s+\S", heading_text):
+                    return "#", heading_text
+                if re.match(r"^\d+\.\s+\S", heading_text) and not re.match(r"^\d+\.\d+", heading_text):
+                    return "##", heading_text
+                if re.match(r"^\d+\.\d+[\d.]*\s+\S", heading_text):
+                    return "###", heading_text
 
-            if re.match(r"^[IVX]+\.\s+\S", heading_text):
-                return "#", heading_text
-            if re.match(r"^\d+\.\s+\S", heading_text) and not re.match(
-                r"^\d+\.\d+", heading_text
-            ):
-                return "##", heading_text
-            if re.match(r"^\d+\.\d+[\d.]*\s+\S", heading_text):
-                return "###", heading_text
+            # 3. LUỒNG BỔ SUNG: Không đánh số NHƯNG in đậm (Tiêu đề tự do)
+            # Điều kiện: Phải ngắn (<= 100 ký tự) và không có dấu hai chấm ở đầu để tránh nhầm với câu nhấn mạnh
+            if bold and len(text) <= 100 and ":" not in text[:40]:
+                return "###", text # Mặc định gom tiêu đề dạng này thành H3 an toàn
 
+            # 4. Rớt đài: Trả về text thường
             return None, text
 
         def table_to_markdown(table) -> str:

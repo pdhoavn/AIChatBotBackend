@@ -7,7 +7,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
+uploads/
 # Local development documentation (exclude from repository)
 LOCAL_NOTES/
 SESSION_CHANGES/

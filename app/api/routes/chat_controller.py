@@ -19,7 +19,7 @@ import uuid
 from app.models.database import SessionLocal
 from app.services import training_service
 from app.services.training_service import TrainingService
-
+from app.models.entities import ( KnowledgeBaseDocument, )
 
 class ChatStreamRequest(BaseModel):
     """Request body cho endpoint SSE /stream."""
@@ -603,26 +603,43 @@ async def stream_chat(
             # Nếu chunk sạch (hoặc không dính điều kiện trên), thêm vào danh sách
             clean_context_chunks.append(r)
         context_chunks = clean_context_chunks
-        print(f"FILE NAME: {r.payload.get('file_name', '')}")
-        context = "\n\n".join([f"[Nguồn: {r.payload.get('file_name', '')}]\n{r.payload.get('chunk_text', '')}"
-            if r.payload.get('file_name')
-            else r.payload.get('chunk_text', '')
-            for r in context_chunks
-        ])
+        doc_id_to_title = {}
+        db_lookup = SessionLocal()
+        try:
+            def _get_source_name(r):
+                fname = r.payload.get('file_name')
+                if fname:
+                    return fname
+                doc_id = r.payload.get('document_id')
+                if doc_id is None:
+                    return "Không xác định"
+                if doc_id in doc_id_to_title:
+                    return doc_id_to_title[doc_id]
+                d = db_lookup.query(KnowledgeBaseDocument.title).filter_by(document_id=doc_id).first()
+                title = d.title if d else f"doc_{doc_id}"
+                doc_id_to_title[doc_id] = title
+                return title
+
+            context = "\n\n".join([
+                f"[Nguồn: {_get_source_name(r)}]\n{r.payload.get('chunk_text', '')}"
+                for r in context_chunks
+            ])
+        finally:
+            db_lookup.close()
         _chat_log(
             f"context_precheck chunks={len(context_chunks)} chars={len(context)} intent_id={intent_id}",
             trace_id,
         )
 
         tier_check_start = time.perf_counter()
-        # tier_source = await sse_service.llm_document_recommendation_check(
-        #     enriched_query, context
-        # )
-        # tier_check_elapsed_ms = int((time.perf_counter() - tier_check_start) * 1000)
-        # _chat_log(
-        #     f"llm_document_recommendation_check result={tier_source} elapsed_ms={tier_check_elapsed_ms}",
-        #     trace_id,
-        # )
+        tier_source = await sse_service.llm_document_recommendation_check(
+            enriched_query, context
+        )
+        tier_check_elapsed_ms = int((time.perf_counter() - tier_check_start) * 1000)
+        _chat_log(
+            f"llm_document_recommendation_check result={tier_source} elapsed_ms={tier_check_elapsed_ms}",
+            trace_id,
+        )
 
         # === TIER 2: document ===
         if (
