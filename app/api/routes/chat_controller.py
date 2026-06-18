@@ -786,6 +786,7 @@ async def stream_chat(
 
         # === TIER 4: nope / low-confidence document ===
         elif tier_source == "document" or tier_source == "nope":
+            print(context)
             async for chunk in sse_service.stream_response_from_NA(
                 query=enriched_query,
                 context=context,

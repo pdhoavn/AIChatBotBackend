@@ -232,7 +232,31 @@ class DocumentProcessor:
                 if i == 0:
                     rows.append("| " + " | ".join(["---"] * len(cells)) + " |")
             return "\n".join(rows)
-
+        def table_to_semantic_text(table) -> str:
+            if not table.rows:
+                return ""
+                
+            # Lấy tiêu đề cột từ dòng đầu tiên
+            headers = [cell.text.strip().replace("\n", " ") for cell in table.rows[0].cells]
+            
+            semantic_rows = []
+            for i, row in enumerate(table.rows):
+                if i == 0:
+                    continue # Bỏ qua dòng header
+                    
+                cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
+                
+                row_text_parts = []
+                for j, cell_val in enumerate(cells):
+                    # Nếu cột không có tiêu đề, gán tên tạm là Cột 1, Cột 2...
+                    col_name = headers[j] if j < len(headers) and headers[j] else f"Cột {j+1}"
+                    if cell_val: # Chỉ lấy các ô có dữ liệu để tiết kiệm token
+                        row_text_parts.append(f"{col_name}: {cell_val}")
+                
+                if row_text_parts:
+                    semantic_rows.append("- " + ", ".join(row_text_parts))
+                    
+            return "\n".join(semantic_rows)
         lines = []
         for child in docx_file.element.body.iterchildren():
             tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
@@ -258,7 +282,8 @@ class DocumentProcessor:
             elif tag == "tbl":
                 from docx.table import Table
 
-                lines.append(table_to_markdown(Table(child, docx_file)))
+                #lines.append(table_to_markdown(Table(child, docx_file)))
+                lines.append(table_to_semantic_text(Table(child, docx_file)))
                 lines.append("")
 
         return "\n".join(lines)
@@ -304,6 +329,30 @@ class DocumentProcessor:
                         if i == 0:
                             rows.append("| " + " | ".join(["---"] * len(cells)) + " |")
                     return "\n".join(rows)
+                def table_to_semantic_text(table_data: list) -> str:
+                    if not table_data:
+                        return ""
+                        
+                    # Dòng đầu tiên làm header
+                    headers = [(cell or "").replace("\n", " ").strip() for cell in table_data[0]]
+                    
+                    semantic_rows = []
+                    for i, row in enumerate(table_data):
+                        if i == 0:
+                            continue
+                            
+                        cells = [(cell or "").replace("\n", " ").strip() for cell in row]
+                        
+                        row_text_parts = []
+                        for j, cell_val in enumerate(cells):
+                            col_name = headers[j] if j < len(headers) and headers[j] else f"Cột {j+1}"
+                            if cell_val:
+                                row_text_parts.append(f"{col_name}: {cell_val}")
+                                
+                        if row_text_parts:
+                            semantic_rows.append("- " + ", ".join(row_text_parts))
+                            
+                    return "\n".join(semantic_rows)
 
                 all_output = []
 
@@ -376,7 +425,8 @@ class DocumentProcessor:
                         data = table.extract()
                         if not data:
                             continue
-                        all_output.append(table_to_markdown(data))
+                        #all_output.append(table_to_markdown(data))
+                        all_output.append(table_to_semantic_text(data))
                         all_output.append("")
 
                 return "\n".join(all_output)
@@ -666,6 +716,8 @@ class DocumentProcessor:
         # Remove multiple spaces
         text = re.sub(r" +", " ", text)
 
+        # Xóa các dòng chỉ chứa dấu gạch ngang (---) sinh ra từ bảng biểu hoặc file Markdown
+        text = re.sub(r"^-{3,}\s*$", "", text, flags=re.MULTILINE)
         # Remove multiple newlines
         text = re.sub(r"\n\n+", "\n\n", text)
 
