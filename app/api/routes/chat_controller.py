@@ -512,7 +512,7 @@ async def stream_chat(
             a_text = top.payload.get("answer_text")
             intent_id = top.payload.get("intent_id")
             relevance_ok = await sse_service.llm_relevance_check(
-                enriched_query, q_text, a_text
+                enriched_query, q_text, a_text, message
             )
             _chat_log(f"training_qa_relevance={relevance_ok}", trace_id)
 
