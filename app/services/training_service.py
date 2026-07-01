@@ -369,7 +369,7 @@ class TrainingService:
         - "lương của cán bộ" 
         → rewrite: "chế độ tiền lương viên chức giảng viên người lao động"
         HƯỚNG DẪN:
-        1. KHÔI PHỤC NGỮ CẢNH: Thay thế các đại từ (nó, trường này, ngành đó), câu rút gọn, hoặc chủ ngữ bị khuyết bằng các DANH TỪ RIÊNG cụ thể (tên trường, tên cơ sở, tên ngành, phương thức) ĐÃ XUẤT HIỆN trong hội thoại trước đó.
+        1. KHÔI PHỤC NGỮ CẢNH: Thay thế các đại từ (nó, trường này, trường, khoa, cơ sở, ngành, ngành đó), câu rút gọn, hoặc chủ ngữ bị khuyết bằng các DANH TỪ RIÊNG cụ thể (tên trường, tên cơ sở, tên ngành, phương thức) ĐÃ XUẤT HIỆN trong hội thoại trước đó.
         ĐẶC BIỆT: Các cụm "dẫn chứng này", "thông tin trên", "quy định đó", "điều vừa nói", 
         "câu trả lời trước" → BẮT BUỘC tra lại lịch sử để tìm CHỦ ĐỀ CỤ THỂ đang được nhắc đến 
         rồi thay thế vào.
@@ -411,7 +411,7 @@ class TrainingService:
                 + Ví dụ: Query gốc: "Cho tôi biết quy trình mua sắm thiết bị" -> Query mới: "Quy trình mua sắm thiết bị của Phòng Thiết bị - Quản trị".
             - NẾU người dùng đã chỉ định đích danh một phòng ban trong câu hỏi (Ví dụ: "mua sắm bên phòng khoa học công nghệ", "phòng KHCN mua sắm ra sao"):
                 + GIỮ NGUYÊN chủ đích của người dùng, TUYỆT ĐỐI KHÔNG tự ý chèn thêm tên Phòng Thiết bị - Quản trị vào truy vấn.
-        9. - NHÓM CƠ SỞ HCM: "Phân hiệu", "UTC2", "Cơ sở II", "Cơ sở 2", "CSII", "CS2", "TP.HCM", "Phân hiệu TP.HCM", "cơ sở tại thành phố"
+        9. - NHÓM CƠ SỞ HCM: "Trường", "Phân hiệu", "UTC2", "Cơ sở II", "Cơ sở 2", "CSII", "CS2", "TP.HCM", "Phân hiệu TP.HCM", "cơ sở tại thành phố"
             → Khi gặp bất kỳ từ nào, thêm vào query: "Phân hiệu Trường Đại học Giao thông vận tải TP.HCM(UTC2)"
             - NHÓM CƠ SỞ HN: "Trụ sở chính", "Cơ sở I", "Hà Nội", "GHA", 
             "cơ sở Hà Nội"
@@ -423,6 +423,10 @@ class TrainingService:
 
             - User hỏi: "UTC2 có quy định gì về nghỉ phép"  
             → Query: "quy định nghỉ phép viên chức tại Phân hiệu UTC2"
+
+            - Lịch sử: Đang nói về "Phân hiệu"
+            - User hỏi cộc lốc: "địa chỉ của trường"
+            → Query kế thừa: "địa chỉ của Phân hiệu Trường Đại học Giao thông vận tải TP.HCM(UTC2)"
 
             - User hỏi KHÔNG nhắc cơ sở nào:
             → KHÔNG tự thêm bất kỳ tên cơ sở nào
