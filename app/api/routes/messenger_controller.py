@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, Depends
+from fastapi import APIRouter, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 import logging
@@ -6,54 +6,125 @@ import os
 
 from app.services.facebook_service import facebook_service
 from app.services.training_service import TrainingService
-from app.models.database import get_db
-from app.models.entities import TargetAudience
+from app.models.database import SessionLocal
+from app.models.entities import KnowledgeBaseDocument
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 service = TrainingService()
+DEFAULT_MESSENGER_AUDIENCE_ID = 4
+AUDIENCE_NAMES = {
+    1: "Sinh viên",
+    2: "Phụ huynh",
+    3: "Viên chức",
+    4: "Tuyển sinh",
+}
+SET_AUDIENCE_MARKER = "[[user/setaudience]]"
 
 # In-memory cache: sender_psid -> session info
 # Production nên dùng Redis hoặc DB, nhưng đơn giản dùng dict cho POC
-# Structure: {sender_psid: {"session_id": int, "audience_id": int | None}}
+# Structure: {sender_psid: {"session_id": int, "audience_id": int}}
 _messenger_sessions: dict[str, dict] = {}
 
 
 def get_or_create_session(sender_psid: str) -> dict:
     """Lấy hoặc tạo session info cho messenger user."""
     if sender_psid in _messenger_sessions:
-        return _messenger_sessions[sender_psid]
+        info = _messenger_sessions[sender_psid]
+        if not info.get("audience_id"):
+            info["audience_id"] = DEFAULT_MESSENGER_AUDIENCE_ID
+        return info
     session_id = service.create_chat_session(user_id=None, session_type="messenger")
-    info = {"session_id": session_id, "audience_id": None}
+    info = {"session_id": session_id, "audience_id": DEFAULT_MESSENGER_AUDIENCE_ID}
     _messenger_sessions[sender_psid] = info
     return info
 
 
-def get_audiences(db=None) -> list[dict]:
-    """Lấy danh sách audience từ DB."""
-    try:
-        from app.models.database import SessionLocal
-        if db is None:
-            db = SessionLocal()
-        rows = db.query(TargetAudience).all()
-        return [{"id": r.id, "name": r.name} for r in rows]
-    except Exception as e:
-        logger.error(f"Failed to fetch audiences: {e}")
-        return []
-
-
-def build_audience_quick_replies() -> list[dict]:
-    """Build quick replies cho audience selection."""
-    audiences = get_audiences()
-    quick_replies = []
-    for aud in audiences:
-        quick_replies.append({
+def build_audience_switch_quick_replies() -> list[dict]:
+    """Build quick replies for switching audience only when fallback asks for it."""
+    return [
+        {
             "content_type": "text",
-            "title": aud["name"],
-            "payload": f"AUDIENCE:{aud['id']}",
-        })
-    return quick_replies
+            "title": name,
+            "payload": f"AUDIENCE:{audience_id}",
+        }
+        for audience_id, name in AUDIENCE_NAMES.items()
+    ]
+
+
+def send_messenger_reply(sender_psid: str, reply: str) -> bool:
+    """Send a Messenger reply and convert set-audience marker to quick replies."""
+    should_offer_audience_switch = SET_AUDIENCE_MARKER in reply
+    clean_reply = reply.replace(SET_AUDIENCE_MARKER, "").strip()
+    sent = True
+    if clean_reply:
+        sent = facebook_service.send_text_message(
+            sender_psid, facebook_service.strip_markdown(clean_reply)
+        )
+    if should_offer_audience_switch:
+        sent = (
+            facebook_service.send_quick_replies(
+                sender_psid,
+                "Bạn muốn chuyển sang nhóm hỗ trợ phù hợp hơn không?",
+                build_audience_switch_quick_replies(),
+            )
+            and sent
+        )
+    return sent
+
+
+def filter_tuyensinh_context_chunks(context_chunks: list, enriched_query: str) -> list:
+    """Keep Messenger admissions context aligned with SSE admissions filtering."""
+    clean_context_chunks = []
+    for result in context_chunks:
+        chunk_text = result.payload.get("chunk_text", "")
+        if (
+            "2026" in enriched_query
+            and "Năm 2024" in chunk_text
+            and "Năm 2025" in chunk_text
+        ):
+            logger.info(
+                "Messenger filtered historical admissions chunk: %s",
+                chunk_text[:50],
+            )
+            continue
+        clean_context_chunks.append(result)
+    return clean_context_chunks
+
+
+def build_context_with_sources(context_chunks: list) -> str:
+    """Build context in the same source-labelled format as the SSE chatbot."""
+    doc_id_to_title = {}
+    db = SessionLocal()
+    try:
+        def get_source_name(result):
+            file_name = result.payload.get("file_name")
+            if file_name:
+                return file_name
+            doc_id = result.payload.get("document_id")
+            if doc_id is None:
+                return "Không xác định"
+            if doc_id in doc_id_to_title:
+                return doc_id_to_title[doc_id]
+            document = (
+                db.query(KnowledgeBaseDocument.title)
+                .filter_by(document_id=doc_id)
+                .first()
+            )
+            title = document.title if document else f"doc_{doc_id}"
+            doc_id_to_title[doc_id] = title
+            return title
+
+        return "\n\n".join(
+            [
+                f"[Nguồn: {get_source_name(result)}]\n"
+                f"{result.payload.get('chunk_text', '')}"
+                for result in context_chunks
+            ]
+        )
+    finally:
+        db.close()
 
 
 class MessengerWebhookPayload(BaseModel):
@@ -111,40 +182,25 @@ async def handle_webhook(payload: MessengerWebhookPayload):
 
                 # Handle GET_STARTED
                 if payload_data == "GET_STARTED":
-                    quick_replies = build_audience_quick_replies()
-                    if quick_replies:
-                        facebook_service.send_quick_replies(
-                            sender_psid,
-                            "👋 Xin chào! Mình là trợ lý tư vấn tuyển sinh.\n\n"
-                            "Bạn là **đối tượng** nào? (Chọn 1 trong các options bên dưới):",
-                            quick_replies,
-                        )
-                    else:
-                        facebook_service.send_text_message(
-                            sender_psid,
-                            "👋 Xin chào! Mình là trợ lý tư vấn tuyển sinh.\n\n"
-                            "Bạn vui lòng nhắn 'sinh viên', 'phụ huynh', 'viên chức', "
-                            "hoặc 'tuyển sinh' để mình tư vấn đúng nhé!"
-                        )
+                    get_or_create_session(sender_psid)
+                    facebook_service.send_text_message(
+                        sender_psid,
+                        "👋 Xin chào! Mình là trợ lý tư vấn tuyển sinh UTC2.\n\n"
+                        "Bạn có thể hỏi trực tiếp về ngành học, điểm chuẩn, học phí, "
+                        "hồ sơ, phương thức xét tuyển hoặc thông tin tuyển sinh nhé!",
+                    )
                     return {"status": "ok"}
 
                 # Handle RESET_SESSION
                 if payload_data == "RESET_SESSION":
                     if sender_psid in _messenger_sessions:
                         del _messenger_sessions[sender_psid]
-                    quick_replies = build_audience_quick_replies()
-                    if quick_replies:
-                        facebook_service.send_quick_replies(
-                            sender_psid,
-                            "🔄 Đã bắt đầu lại!\n\nBạn là **đối tượng** nào?",
-                            quick_replies,
-                        )
-                    else:
-                        facebook_service.send_text_message(
-                            sender_psid,
-                            "🔄 Đã bắt đầu lại! Bạn vui lòng nhắn 'sinh viên', "
-                            "'phụ huynh', 'viên chức', hoặc 'tuyển sinh' nhé!"
-                        )
+                    get_or_create_session(sender_psid)
+                    facebook_service.send_text_message(
+                        sender_psid,
+                        "🔄 Đã bắt đầu lại phiên tư vấn tuyển sinh. "
+                        "Bạn cứ gửi câu hỏi tiếp theo nhé!",
+                    )
                     return {"status": "ok"}
 
                 if payload_data.startswith("AUDIENCE:"):
@@ -153,16 +209,13 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                         info = get_or_create_session(sender_psid)
                         info["audience_id"] = audience_id
                         _messenger_sessions[sender_psid] = info
-
-                        audiences = get_audiences()
-                        selected_name = next(
-                            (a["name"] for a in audiences if a["id"] == audience_id),
-                            f"Audience #{audience_id}"
+                        selected_name = AUDIENCE_NAMES.get(
+                            audience_id, f"Audience #{audience_id}"
                         )
                         facebook_service.send_text_message(
                             sender_psid,
-                            f"✓ Đã chọn: **{selected_name}**\n\n"
-                            f"Bây giờ bạn có thể hỏi về chủ đề liên quan nhé!"
+                            f"✓ Đã chuyển sang nhóm **{selected_name}**.\n\n"
+                            "Bạn gửi lại câu hỏi hoặc hỏi tiếp nhé!",
                         )
                     except (ValueError, IndexError):
                         logger.warning(f"Invalid audience payload: {payload_data}")
@@ -183,16 +236,13 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                     info = get_or_create_session(sender_psid)
                     info["audience_id"] = audience_id
                     _messenger_sessions[sender_psid] = info
-
-                    audiences = get_audiences()
-                    selected_name = next(
-                        (a["name"] for a in audiences if a["id"] == audience_id),
-                        f"Audience #{audience_id}"
+                    selected_name = AUDIENCE_NAMES.get(
+                        audience_id, f"Audience #{audience_id}"
                     )
                     facebook_service.send_text_message(
                         sender_psid,
-                        f"✓ Đã chọn: **{selected_name}**\n\n"
-                        f"Bây giờ bạn có thể hỏi về chủ đề liên quan nhé!"
+                        f"✓ Đã chuyển sang nhóm **{selected_name}**.\n\n"
+                        "Bạn gửi lại câu hỏi hoặc hỏi tiếp nhé!",
                     )
                 except (ValueError, IndexError):
                     logger.warning(f"Invalid quick reply payload: {quick_reply_payload}")
@@ -223,39 +273,28 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                 session_id = info["session_id"]
                 audience_id = info.get("audience_id")
 
-                # Lần đầu chưa chọn audience -> hỏi chọn audience
-                if audience_id is None:
-                    quick_replies = build_audience_quick_replies()
-                    if quick_replies:
-                        facebook_service.send_quick_replies(
-                            sender_psid,
-                            "👋 Xin chào! Mình là trợ lý tư vấn tuyển sinh.\n\n"
-                            "Bạn là **đối tượng** nào? (Chọn 1 trong các options bên dưới):",
-                            quick_replies,
-                        )
-                    else:
-                        facebook_service.send_text_message(
-                            sender_psid,
-                            "👋 Xin chào! Mình là trợ lý tư vấn tuyển sinh.\n\n"
-                            "Bạn vui lòng nhắn 'sinh viên', 'phụ huynh', 'viên chức', "
-                            "hoặc 'tuyển sinh' để mình tư vấn đúng nhé!"
-                        )
-                    facebook_service.send_typing_off(sender_psid)
-                    continue
-
                 # Enrich query
-                enriched_query = await service.enrich_query(session_id, text)
+                if audience_id == DEFAULT_MESSENGER_AUDIENCE_ID:
+                    enriched_query = await service.enrich_query_tuyensinh(
+                        session_id, text
+                    )
+                else:
+                    enriched_query = await service.enrich_query(session_id, text)
                 if not enriched_query:
                     reply = (
                         "Mình chưa rõ ý bạn lắm, bạn có thể nói rõ hơn được không?"
                     )
-                    facebook_service.send_text_message(sender_psid, facebook_service.strip_markdown(reply))
+                    send_messenger_reply(sender_psid, reply)
                     facebook_service.send_typing_off(sender_psid)
                     continue
 
                 # Hybrid search - đợi full response (không stream như WS)
                 top_k = int(os.getenv("TOP_K", 5))
                 confidence_threshold = float(os.getenv("CONFIDENCE_SCORE", 0.35))
+                if audience_id == DEFAULT_MESSENGER_AUDIENCE_ID:
+                    check_listing = await service.llm_listing_check(enriched_query)
+                    if check_listing:
+                        top_k = 30
 
                 result = await service.hybrid_search(
                     audience_ids=audience_id,
@@ -295,7 +334,7 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                         ):
                             reply_chunks.append(getattr(chunk, "content", str(chunk)))
                         reply = "".join(reply_chunks)
-                        facebook_service.send_text_message(sender_psid, facebook_service.strip_markdown(reply))
+                        send_messenger_reply(sender_psid, reply)
                         facebook_service.send_typing_off(sender_psid)
                         continue
                     else:
@@ -317,9 +356,15 @@ async def handle_webhook(payload: MessengerWebhookPayload):
 
                 # Build context từ document chunks
                 context_chunks = result.get("response", [])
-                context = "\n\n".join(
-                    [r.payload.get("chunk_text", "") for r in context_chunks]
-                )
+                if audience_id == DEFAULT_MESSENGER_AUDIENCE_ID:
+                    context_chunks = filter_tuyensinh_context_chunks(
+                        context_chunks, enriched_query
+                    )
+                    context = build_context_with_sources(context_chunks)
+                else:
+                    context = "\n\n".join(
+                        [r.payload.get("chunk_text", "") for r in context_chunks]
+                    )
                 intent_id = result.get("intent_id")
 
                 logger.info(
@@ -336,13 +381,22 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                 # === TIER 2: document ===
                 if tier_source == "document" and confidence >= confidence_threshold:
                     reply_chunks = []
-                    async for chunk in service.stream_response_from_context(
+                    stream_method = (
+                        service.stream_response_from_context_tuyensinh
+                        if audience_id == DEFAULT_MESSENGER_AUDIENCE_ID
+                        else service.stream_response_from_context
+                    )
+                    async for chunk in stream_method(
                         enriched_query,
                         context,
                         session_id,
                         None,
                         intent_id,
                         text,
+                        query_embedding=query_embedding,
+                        current_audience_id=audience_id,
+                        current_intent_id=None,
+                        confidence=confidence,
                     ):
                         piece = getattr(chunk, "content", str(chunk))
                         reply_chunks.append(piece)
@@ -368,7 +422,7 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                         filtered_sources = []
                         logger.info("Messenger citation_guard skipped: insufficient_answer")
 
-                    facebook_service.send_text_message(sender_psid, facebook_service.strip_markdown(reply))
+                    send_messenger_reply(sender_psid, reply)
                     facebook_service.send_typing_off(sender_psid)
                     continue
 
@@ -380,7 +434,7 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                     ):
                         reply_chunks.append(getattr(chunk, "content", str(chunk)))
                     reply = "".join(reply_chunks)
-                    facebook_service.send_text_message(sender_psid, facebook_service.strip_markdown(reply))
+                    send_messenger_reply(sender_psid, reply)
                     facebook_service.send_typing_off(sender_psid)
                     continue
 
@@ -406,7 +460,7 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                         "Bạn thử hỏi theo cách khác nhé!"
                     )
 
-                facebook_service.send_text_message(sender_psid, facebook_service.strip_markdown(reply))
+                send_messenger_reply(sender_psid, reply)
 
             except Exception as e:
                 logger.error(f"Error handling messenger message: {e}")
@@ -424,34 +478,19 @@ async def handle_webhook(payload: MessengerWebhookPayload):
 async def setup_persistent_menu():
     """
     Gọi endpoint này 1 lần để setup Persistent Menu trên Messenger.
-    Menu cho phép user đổi audience bất kỳ lúc nào.
+    Menu cho phép user bắt đầu lại phiên tư vấn tuyển sinh.
     """
     from app.core.config import settings
 
     menu_items = [
         {
             "type": "postback",
-            "title": "👨‍🎓 Sinh viên",
-            "payload": "AUDIENCE:1",
-        },
-        {
-            "type": "postback",
-            "title": "👨‍👩‍👧 Phụ huynh",
-            "payload": "AUDIENCE:2",
-        },
-        {
-            "type": "postback",
-            "title": "👔 Viên chức",
-            "payload": "AUDIENCE:3",
-        },
-        {
-            "type": "postback",
-            "title": "🔍 Tuyển sinh",
+            "title": "Tư vấn tuyển sinh",
             "payload": "AUDIENCE:4",
         },
         {
             "type": "postback",
-            "title": "🔄 Bắt đầu lại",
+            "title": "Bắt đầu lại",
             "payload": "RESET_SESSION",
         },
     ]
