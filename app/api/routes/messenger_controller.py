@@ -13,7 +13,8 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 service = TrainingService()
-DEFAULT_MESSENGER_AUDIENCE_ID = 4
+DEFAULT_MESSENGER_AUDIENCE_ID = 1
+TUYENSINH_AUDIENCE_ID = 4
 AUDIENCE_NAMES = {
     1: "Sinh viên",
     2: "Phụ huynh",
@@ -185,9 +186,9 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                     get_or_create_session(sender_psid)
                     facebook_service.send_text_message(
                         sender_psid,
-                        "👋 Xin chào! Mình là trợ lý tư vấn tuyển sinh UTC2.\n\n"
-                        "Bạn có thể hỏi trực tiếp về ngành học, điểm chuẩn, học phí, "
-                        "hồ sơ, phương thức xét tuyển hoặc thông tin tuyển sinh nhé!",
+                        "👋 Xin chào! Mình là trợ lý ảo UTC2.\n\n"
+                        "Mặc định mình sẽ hỗ trợ theo nhóm Sinh viên. "
+                        "Bạn cứ gửi câu hỏi, nếu cần mình sẽ gợi ý chuyển sang nhóm phù hợp hơn.",
                     )
                     return {"status": "ok"}
 
@@ -198,7 +199,7 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                     get_or_create_session(sender_psid)
                     facebook_service.send_text_message(
                         sender_psid,
-                        "🔄 Đã bắt đầu lại phiên tư vấn tuyển sinh. "
+                        "🔄 Đã bắt đầu lại phiên hỗ trợ Sinh viên. "
                         "Bạn cứ gửi câu hỏi tiếp theo nhé!",
                     )
                     return {"status": "ok"}
@@ -274,7 +275,7 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                 audience_id = info.get("audience_id")
 
                 # Enrich query
-                if audience_id == DEFAULT_MESSENGER_AUDIENCE_ID:
+                if audience_id == TUYENSINH_AUDIENCE_ID:
                     enriched_query = await service.enrich_query_tuyensinh(
                         session_id, text
                     )
@@ -291,7 +292,7 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                 # Hybrid search - đợi full response (không stream như WS)
                 top_k = int(os.getenv("TOP_K", 5))
                 confidence_threshold = float(os.getenv("CONFIDENCE_SCORE", 0.35))
-                if audience_id == DEFAULT_MESSENGER_AUDIENCE_ID:
+                if audience_id == TUYENSINH_AUDIENCE_ID:
                     check_listing = await service.llm_listing_check(enriched_query)
                     if check_listing:
                         top_k = 30
@@ -356,7 +357,7 @@ async def handle_webhook(payload: MessengerWebhookPayload):
 
                 # Build context từ document chunks
                 context_chunks = result.get("response", [])
-                if audience_id == DEFAULT_MESSENGER_AUDIENCE_ID:
+                if audience_id == TUYENSINH_AUDIENCE_ID:
                     context_chunks = filter_tuyensinh_context_chunks(
                         context_chunks, enriched_query
                     )
@@ -383,7 +384,7 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                     reply_chunks = []
                     stream_method = (
                         service.stream_response_from_context_tuyensinh
-                        if audience_id == DEFAULT_MESSENGER_AUDIENCE_ID
+                        if audience_id == TUYENSINH_AUDIENCE_ID
                         else service.stream_response_from_context
                     )
                     async for chunk in stream_method(
@@ -478,15 +479,15 @@ async def handle_webhook(payload: MessengerWebhookPayload):
 async def setup_persistent_menu():
     """
     Gọi endpoint này 1 lần để setup Persistent Menu trên Messenger.
-    Menu cho phép user bắt đầu lại phiên tư vấn tuyển sinh.
+    Menu cho phép user quay về nhóm Sinh viên hoặc bắt đầu lại.
     """
     from app.core.config import settings
 
     menu_items = [
         {
             "type": "postback",
-            "title": "Tư vấn tuyển sinh",
-            "payload": "AUDIENCE:4",
+            "title": "Sinh viên",
+            "payload": "AUDIENCE:1",
         },
         {
             "type": "postback",
