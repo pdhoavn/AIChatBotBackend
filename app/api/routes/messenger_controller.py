@@ -359,26 +359,37 @@ async def handle_webhook(payload: MessengerWebhookPayload):
 
                     if relevance_ok:
                         if top.payload.get("is_private", False):
-                            send_messenger_reply(
-                                sender_psid,
-                                "Nội dung này yêu cầu đăng nhập để xem.",
+                            logger.info(
+                                "Messenger: private QA matched, falling back to public documents"
                             )
+                            doc_results = await service.search_documents(
+                                enriched_query,
+                                audience_ids=audience_id,
+                                intent_id=None,
+                                top_k=top_k,
+                                trace_id="fb",
+                                stage="messenger_private_qa_fallback",
+                                query_embedding=query_embedding,
+                            )
+                            result = service.build_document_search_result(doc_results)
+                            result["query_embedding"] = query_embedding
+                            confidence = result.get("confidence", 0.0)
+                            tier_source = "document"
+                        else:
+                            reply_chunks = []
+                            async for chunk in service.stream_response_from_qa(
+                                enriched_query,
+                                a_text,
+                                session_id,
+                                None,
+                                intent_id,
+                                text,
+                            ):
+                                reply_chunks.append(getattr(chunk, "content", str(chunk)))
+                            reply = "".join(reply_chunks)
+                            send_messenger_reply(sender_psid, reply)
                             facebook_service.send_typing_off(sender_psid)
                             continue
-                        reply_chunks = []
-                        async for chunk in service.stream_response_from_qa(
-                            enriched_query,
-                            a_text,
-                            session_id,
-                            None,
-                            intent_id,
-                            text,
-                        ):
-                            reply_chunks.append(getattr(chunk, "content", str(chunk)))
-                        reply = "".join(reply_chunks)
-                        send_messenger_reply(sender_psid, reply)
-                        facebook_service.send_typing_off(sender_psid)
-                        continue
                     else:
                         # QA not relevant → fallback xuống document
                         logger.info("Messenger: QA not relevant → fallback to document")
@@ -403,12 +414,20 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                         context_chunks, enriched_query
                     )
                 if service.has_private_content(context_chunks):
-                    send_messenger_reply(
-                        sender_psid,
-                        "Nội dung này yêu cầu đăng nhập để xem.",
+                    public_context_chunks = service.filter_public_content(context_chunks)
+                    logger.info(
+                        "Messenger filtered private chunks: %s -> %s",
+                        len(context_chunks),
+                        len(public_context_chunks),
                     )
-                    facebook_service.send_typing_off(sender_psid)
-                    continue
+                    context_chunks = public_context_chunks
+                    if not context_chunks:
+                        send_messenger_reply(
+                            sender_psid,
+                            "Nội dung này yêu cầu đăng nhập để xem.",
+                        )
+                        facebook_service.send_typing_off(sender_psid)
+                        continue
 
                 context = build_context_with_sources(context_chunks)
                 intent_id = result.get("intent_id")
