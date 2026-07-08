@@ -22,6 +22,7 @@ AUDIENCE_NAMES = {
     4: "Tuyển sinh",
 }
 SET_AUDIENCE_MARKER = "[[user/setaudience]]"
+MESSENGER_TEXT_LIMIT = 1900
 
 # In-memory cache: sender_psid -> session info
 # Production nên dùng Redis hoặc DB, nhưng đơn giản dùng dict cho POC
@@ -54,15 +55,39 @@ def build_audience_switch_quick_replies() -> list[dict]:
     ]
 
 
+def split_messenger_text(text: str, limit: int = MESSENGER_TEXT_LIMIT) -> list[str]:
+    """Split long answers into Messenger-safe text messages."""
+    text = text.strip()
+    if not text:
+        return []
+
+    parts = []
+    remaining = text
+    while len(remaining) > limit:
+        split_at = max(
+            remaining.rfind("\n\n", 0, limit),
+            remaining.rfind("\n", 0, limit),
+            remaining.rfind(". ", 0, limit),
+            remaining.rfind(" ", 0, limit),
+        )
+        if split_at < max(1, limit // 2):
+            split_at = limit
+        part = remaining[:split_at].strip()
+        if part:
+            parts.append(part)
+        remaining = remaining[split_at:].strip()
+    if remaining:
+        parts.append(remaining)
+    return parts
+
+
 def send_messenger_reply(sender_psid: str, reply: str) -> bool:
     """Send a Messenger reply and convert set-audience marker to quick replies."""
     should_offer_audience_switch = SET_AUDIENCE_MARKER in reply
     clean_reply = reply.replace(SET_AUDIENCE_MARKER, "").strip()
     sent = True
-    if clean_reply:
-        sent = facebook_service.send_text_message(
-            sender_psid, facebook_service.strip_markdown(clean_reply)
-        )
+    for part in split_messenger_text(facebook_service.strip_markdown(clean_reply)):
+        sent = facebook_service.send_text_message(sender_psid, part) and sent
     if should_offer_audience_switch:
         sent = (
             facebook_service.send_quick_replies(
@@ -274,6 +299,15 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                 session_id = info["session_id"]
                 audience_id = info.get("audience_id")
 
+                if audience_id != TUYENSINH_AUDIENCE_ID:
+                    is_admission_question = await service.llm_admission_check(text)
+                    if is_admission_question:
+                        audience_id = TUYENSINH_AUDIENCE_ID
+                        logger.info(
+                            "Messenger temporarily routed message to admissions for sender=%s",
+                            sender_psid,
+                        )
+
                 # Enrich query
                 if audience_id == TUYENSINH_AUDIENCE_ID:
                     enriched_query = await service.enrich_query_tuyensinh(
@@ -319,25 +353,43 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                     intent_id = top.payload.get("intent_id")
 
                     relevance_ok = await service.llm_relevance_check(
-                        enriched_query, q_text, a_text
+                        enriched_query, q_text, a_text, text
                     )
                     logger.info(f"Messenger training_qa_relevance={relevance_ok}")
 
                     if relevance_ok:
-                        reply_chunks = []
-                        async for chunk in service.stream_response_from_qa(
-                            enriched_query,
-                            a_text,
-                            session_id,
-                            None,
-                            intent_id,
-                            text,
-                        ):
-                            reply_chunks.append(getattr(chunk, "content", str(chunk)))
-                        reply = "".join(reply_chunks)
-                        send_messenger_reply(sender_psid, reply)
-                        facebook_service.send_typing_off(sender_psid)
-                        continue
+                        if top.payload.get("is_private", False):
+                            logger.info(
+                                "Messenger: private QA matched, falling back to public documents"
+                            )
+                            doc_results = await service.search_documents(
+                                enriched_query,
+                                audience_ids=audience_id,
+                                intent_id=None,
+                                top_k=top_k,
+                                trace_id="fb",
+                                stage="messenger_private_qa_fallback",
+                                query_embedding=query_embedding,
+                            )
+                            result = service.build_document_search_result(doc_results)
+                            result["query_embedding"] = query_embedding
+                            confidence = result.get("confidence", 0.0)
+                            tier_source = "document"
+                        else:
+                            reply_chunks = []
+                            async for chunk in service.stream_response_from_qa(
+                                enriched_query,
+                                a_text,
+                                session_id,
+                                None,
+                                intent_id,
+                                text,
+                            ):
+                                reply_chunks.append(getattr(chunk, "content", str(chunk)))
+                            reply = "".join(reply_chunks)
+                            send_messenger_reply(sender_psid, reply)
+                            facebook_service.send_typing_off(sender_psid)
+                            continue
                     else:
                         # QA not relevant → fallback xuống document
                         logger.info("Messenger: QA not relevant → fallback to document")
@@ -361,11 +413,23 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                     context_chunks = filter_tuyensinh_context_chunks(
                         context_chunks, enriched_query
                     )
-                    context = build_context_with_sources(context_chunks)
-                else:
-                    context = "\n\n".join(
-                        [r.payload.get("chunk_text", "") for r in context_chunks]
+                if service.has_private_content(context_chunks):
+                    public_context_chunks = service.filter_public_content(context_chunks)
+                    logger.info(
+                        "Messenger filtered private chunks: %s -> %s",
+                        len(context_chunks),
+                        len(public_context_chunks),
                     )
+                    context_chunks = public_context_chunks
+                    if not context_chunks:
+                        send_messenger_reply(
+                            sender_psid,
+                            "Nội dung này yêu cầu đăng nhập để xem.",
+                        )
+                        facebook_service.send_typing_off(sender_psid)
+                        continue
+
+                context = build_context_with_sources(context_chunks)
                 intent_id = result.get("intent_id")
 
                 logger.info(
@@ -427,18 +491,6 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                     facebook_service.send_typing_off(sender_psid)
                     continue
 
-                # === TIER 3: recommendation ===
-                if tier_source == "recommendation":
-                    reply_chunks = []
-                    async for chunk in service.stream_response_from_recommendation(
-                        None, session_id, enriched_query, text
-                    ):
-                        reply_chunks.append(getattr(chunk, "content", str(chunk)))
-                    reply = "".join(reply_chunks)
-                    send_messenger_reply(sender_psid, reply)
-                    facebook_service.send_typing_off(sender_psid)
-                    continue
-
                 # === TIER 4: nope ===
                 reply_chunks = []
                 async for chunk in service.stream_response_from_NA(
@@ -463,8 +515,8 @@ async def handle_webhook(payload: MessengerWebhookPayload):
 
                 send_messenger_reply(sender_psid, reply)
 
-            except Exception as e:
-                logger.error(f"Error handling messenger message: {e}")
+            except Exception:
+                logger.exception("Error handling messenger message")
                 facebook_service.send_text_message(
                     sender_psid,
                     "Xin lỗi, hệ thống đang bận. Bạn thử lại sau ít phút nhé.",
