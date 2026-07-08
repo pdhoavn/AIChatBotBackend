@@ -331,6 +331,7 @@ class TrainingQuestionRequest(BaseModel):
     intent_id: Optional[int]
     is_private: Optional[bool] = False
     target_audiences: Optional[List[str]] = []
+    target_units: Optional[List[str]] = []
 
 
 class TrainingQuestionResponse(TrainingQuestionRequest):
@@ -346,6 +347,7 @@ class TrainingQuestionResponse(TrainingQuestionRequest):
     is_private: Optional[bool] = False
     reject_reason: Optional[str] = None
     target_audiences: Optional[List[str]] = []
+    target_units: Optional[List[str]] = []
 
     class Config:
         orm_mode = True
@@ -360,7 +362,7 @@ class TrainingQuestionMetadataUpdate(BaseModel):
     intent_id: Optional[int] = None
     is_private: Optional[bool] = None
     target_audiences: Optional[List[str]] = None
-
+    target_units: Optional[List[str]] = []
 
 class FaqStatisticsBase(BaseModel):
     usage_count: int
@@ -389,12 +391,13 @@ class SuggestionQuestionResponse(BaseModel):
 class KnowledgeBaseDocumentBase(BaseModel):
     title: str
     file_path: str
-    category: Optional[str]
+    category: Optional[str] = None
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
     created_by: Optional[int]
     reject_reason: Optional[str] = None
     target_audiences: Optional[List[str]] = []
+    target_units: Optional[List[str]] = []
     content: Optional[str] = None
     is_ocr: Optional[bool] = False
     path_txt: Optional[str] = None
@@ -408,7 +411,9 @@ class KnowledgeBaseDocumentResponse(KnowledgeBaseDocumentBase):
     created_by_name: Optional[str]
     reviewed_by_name: Optional[str]
     reject_reason: Optional[str] = None
+    category: Optional[str] = None
     target_audiences: Optional[List[str]] = []
+    target_units: Optional[List[str]] = []
     content: Optional[str] = None
     is_private: Optional[bool] = False
     is_ocr: Optional[bool] = False
@@ -430,6 +435,7 @@ class KnowledgeBaseDocumentMetadataUpdate(BaseModel):
     intent_id: Optional[int] = None
     is_private: Optional[bool] = None
     target_audiences: Optional[List[str]] = None
+    target_units: Optional[List[str]] = []
 
 
 class DocumentChunkBase(BaseModel):
@@ -452,7 +458,7 @@ class DocumentChunkItemResponse(BaseModel):
     chunk_index: Optional[int] = None
     chunk_text: str
     char_count: int
-
+    
     class Config:
         orm_mode = True
 
@@ -481,6 +487,7 @@ class DocumentDetailResponse(BaseModel):
     reviewed_by_name: Optional[str] = None
     reject_reason: Optional[str] = None
     target_audiences: Optional[List[str]] = []
+    target_units: Optional[List[str]] = []
     intent_id: Optional[int] = None
     intent_name: Optional[str] = None
     content_char_count: int

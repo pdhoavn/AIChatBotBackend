@@ -464,6 +464,7 @@ class TrainingQuestionAnswer(Base):
     reject_reason = Column(String, nullable=True)
     is_private = Column(Boolean, default=False, nullable=True)
     target_audiences = Column(ARRAY(String), default=[])
+    target_units = Column(ARRAY(String), default=list)
     # removed rejected_by/rejected_at: rejection author/date are not stored as separate columns
     deleted_by = Column(Integer, ForeignKey("Users.user_id"), nullable=True)
     # Relationships
@@ -528,6 +529,7 @@ class KnowledgeBaseDocument(Base):
     reject_reason = Column(String, nullable=True)
     is_private = Column(Boolean, default=False, nullable=True)
     target_audiences = Column(ARRAY(String), default=[])
+    target_units = Column(ARRAY(String), default=list)
     content = Column(Text, nullable=True)
     is_ocr = Column(Boolean, default=False)
     path_txt = Column(String, nullable=True)

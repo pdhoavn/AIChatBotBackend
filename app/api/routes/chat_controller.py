@@ -29,6 +29,7 @@ class ChatStreamRequest(BaseModel):
     user_id: Optional[int] = None
     audience_id: Optional[int] = None
     intent_id: Optional[int] = None
+    unit: Optional[str] = None
 
 
 router = APIRouter()
@@ -395,6 +396,7 @@ async def stream_chat(
     user_id = body.user_id
     audience_id = body.audience_id
     intent_id_from_client = body.intent_id
+    unit = body.unit
     top_k = os.getenv("TOP_K", 5)
     # Guest user/session có ID random không tồn tại trong DB
     # → reset None để service tự tạo mới (giống WS cũ)
@@ -459,7 +461,7 @@ async def stream_chat(
             if check_listing:
                 local_top_k = 30
         else:
-            enriched_query = await sse_service.enrich_query(session_id, message)
+            enriched_query = await sse_service.enrich_query(session_id, message, unit)
       
 
         if not enriched_query:
@@ -481,6 +483,7 @@ async def stream_chat(
                 query=enriched_query,
                 intent_id=intent_id_from_client,
                 trace_id=trace_id,
+                unit=unit
             )
             hybrid_elapsed_ms = int((time.perf_counter() - hybrid_start) * 1000)
             _chat_log(f"hybrid_search_done elapsed_ms={hybrid_elapsed_ms}", trace_id)
@@ -565,6 +568,7 @@ async def stream_chat(
                     trace_id=trace_id,
                     stage="document_recheck_search",
                     query_embedding=result.get("query_embedding"),
+                    unit=unit
                 )
                 result = sse_service.build_document_search_result(doc_results)
                 confidence = result.get("confidence", 0.0)
@@ -720,6 +724,7 @@ async def stream_chat(
                 current_audience_id=audience_id,
                 current_intent_id=intent_id_from_client,
                 confidence=confidence,
+                unit=unit
             ):
                 piece = getattr(chunk, "content", str(chunk))
                 answer_text += piece
@@ -797,6 +802,7 @@ async def stream_chat(
                 current_audience_id=audience_id,
                 current_intent_id=intent_id_from_client,
                 query_embedding=result.get("query_embedding"),
+                unit=unit
             ):
                 yield _sse_event(
                     {

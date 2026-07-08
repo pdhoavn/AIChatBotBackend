@@ -243,6 +243,7 @@ def api_create_training_qa(
         question=payload.question,
         answer=payload.answer,
         target_audiences=payload.target_audiences or [],
+        target_units=payload.target_units or [],
         created_by=current_user_id,
         is_private=payload.is_private,
     )
@@ -260,8 +261,9 @@ async def upload_document(
     file: UploadFile = File(...),
     title: str = Form(None),
     is_private: str = Form(None),
-    category: str = Form(None),
+    category: List[str] = Form([]),
     target_audiences: List[str] = Form([]),
+    target_units: List[str] = Form([]),
     current_user: entities.Users = Depends(check_leader_permission),
     db: Session = Depends(get_db),
 ):
@@ -353,6 +355,7 @@ async def upload_document(
             file_path=str(file_path),
             intend_id=intend_id,
             target_audiences=target_audiences,
+            target_units=target_units,
             created_by=current_user_id,
             is_private=is_private_bool,
             content=extracted_text,
@@ -383,6 +386,7 @@ async def upload_document_ocr(
     title: str = Form(None),
     is_private: str = Form(None),
     target_audiences: List[str] = Form([]),
+    target_units: List[str] = Form([]),
     current_user: entities.Users = Depends(check_leader_permission),
     db: Session = Depends(get_db),
 ):
@@ -422,6 +426,7 @@ async def upload_document_ocr(
         file_path=str(file_path),
         intend_id=intend_id,
         target_audiences=target_audiences,
+        target_units=target_units,
         created_by=current_user_id,
         is_private=is_private_bool,
         content=None,
@@ -623,6 +628,7 @@ def get_all_training_questions(
                 ),
                 "reject_reason": getattr(tqa, "reject_reason", None),
                 "target_audiences": getattr(tqa, "target_audiences", []),
+                "target_units": getattr(tqa, "target_units", []),
                 "is_private": getattr(tqa, "is_private", False),
             }
         )
@@ -671,6 +677,7 @@ def get_all_documents(
             d.reviewed_at,
             d.reject_reason,
             d.target_audiences,
+            d.target_units,
             d.intend_id AS intent_id,
             i.intent_name,
             author.full_name AS created_by_name,
@@ -729,6 +736,7 @@ def get_all_documents(
                 "reviewed_by_name": doc.reviewed_by_name,
                 "reject_reason": doc.reject_reason,
                 "target_audiences": doc.target_audiences or [],
+                "target_units": doc.target_units or [],
                 "intent_id": doc.intent_id,
                 "intent_name": doc.intent_name,
             }
@@ -929,7 +937,9 @@ def update_document_metadata(
         document.target_audiences = payload.target_audiences or []
         qdrant_payload["audience_ids"] = audience_ids
         qdrant_payload["audience_names"] = audience_present_names
-
+    if "target_units" in update_data:
+        document.target_units = payload.target_units or []
+        qdrant_payload["target_units"] = payload.target_units or []
     document.updated_at = datetime.now()
 
     try:
@@ -964,6 +974,7 @@ def update_document_metadata(
         "reviewed_by_name": document.reviewer.full_name if document.reviewer else None,
         "reject_reason": getattr(document, "reject_reason", None),
         "target_audiences": getattr(document, "target_audiences", []),
+        "target_units": getattr(document, "target_units", []),
         "is_private": getattr(document, "is_private", False),
         "is_ocr": getattr(document, "is_ocr", False),
         "intent_id": document.intent.intent_id if document.intent else None,
@@ -1255,6 +1266,7 @@ def api_approve_document(
                                 "chunk_text": chunk,
                                 "audience_ids": audience_ids,
                                 "audience_names": filtered_audience_names,
+                                "target_units": bdoc.target_units,
                                 "intent_id": bdoc.intend_id,
                                 "intent_name": intent.intent_name if intent else None,
                                 "type": "document",
@@ -1404,6 +1416,7 @@ def get_pending_training_questions(
             ),
             "reject_reason": getattr(q, "reject_reason", None),
             "target_audiences": getattr(q, "target_audiences", []),
+            "target_units": getattr(q, "target_units", []),
             "is_private": getattr(q, "is_private", False),
         }
         for q in questions
@@ -1478,6 +1491,9 @@ def update_training_question_metadata(
         qa.target_audiences = payload.target_audiences or []
         qdrant_payload["audience_ids"] = audience_ids
         qdrant_payload["audience_names"] = audience_present_names
+    if "target_units" in update_data:
+        qa.target_units = payload.target_units or []
+        qdrant_payload["target_units"] = payload.target_units or []
 
     try:
         if qa.status == "approved" and qdrant_payload:
@@ -1513,6 +1529,7 @@ def update_training_question_metadata(
         ),
         "reject_reason": getattr(qa, "reject_reason", None),
         "target_audiences": getattr(qa, "target_audiences", []),
+        "target_units": getattr(qa, "target_units", []),
         "is_private": getattr(qa, "is_private", False),
     }
 

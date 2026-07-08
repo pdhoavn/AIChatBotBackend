@@ -104,6 +104,7 @@ def get_document_detail(
         "reviewed_at": doc.reviewed_at,
         "reject_reason": getattr(doc, "reject_reason", None),
         "target_audiences": getattr(doc, "target_audiences", []),
+        "target_units": getattr(doc, "target_units", []),
         "intent_id": doc.intent.intent_id if doc.intent else None,
         "intent_name": doc.intent.intent_name if doc.intent else None,
         "content_char_count": content_char_count,
