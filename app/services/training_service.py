@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 import time
 import json
@@ -11,6 +11,9 @@ from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
 )
 from langchain.chat_models import init_chat_model
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.tools import StructuredTool
+from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient, AsyncQdrantClient, models
 from sentence_transformers import CrossEncoder
 from qdrant_client.models import Distance, VectorParams, PointStruct
@@ -38,6 +41,7 @@ from app.models.entities import (
 from app.models.database import SessionLocal
 from sqlalchemy.exc import SQLAlchemyError
 from app.services.memory_service import MemoryManager
+from app.services.utc2_calendar_service import UTC2CalendarError, UTC2CalendarService
 from app.utils.document_processor import DocumentProcessor
 
 memory_service = MemoryManager()
@@ -45,6 +49,16 @@ load_dotenv()
 # print("Đang nạp mô hình Reranker lên RAM, vui lòng đợi vài giây...")
 # RERANKER_MODEL = CrossEncoder("BAAI/bge-reranker-base", max_length=512)
 # print("Nạp mô hình thành công! Server sẵn sàng.")
+
+
+class UTC2CalendarSearchInput(BaseModel):
+    reference_date: str = Field(
+        description=(
+            "Ngày ISO YYYY-MM-DD nằm trong tuần cần tra cứu. Phải tự quy đổi "
+            "các cách nói như hôm nay, tuần rồi, tuần trước, tuần sau, thứ 6 "
+            "tuần trước hoặc ngày thiếu năm dựa trên ngày hiện tại trong system prompt."
+        )
+    )
 
 
 class TrainingService:
@@ -583,6 +597,56 @@ class TrainingService:
     # ---------------------------
     # Query enrichment: dùng chat_history + last bot question để build a full query
     # ---------------------------
+    def _recent_chat_context(self, session_id: Optional[int], limit: int = 8) -> str:
+        """Load recent persisted turns so calendar follow-ups survive restarts."""
+        if not session_id:
+            return ""
+        db = SessionLocal()
+        try:
+            interactions = (
+                db.query(ChatInteraction)
+                .filter(ChatInteraction.session_id == session_id)
+                .order_by(ChatInteraction.timestamp.desc())
+                .limit(limit)
+                .all()
+            )
+            interactions.reverse()
+            return "\n".join(
+                (
+                    f"{'Trợ lý' if item.is_from_bot else 'Người dùng'}: "
+                    f"{item.message_text}"
+                )
+                for item in interactions
+                if item.message_text
+            )
+        finally:
+            db.close()
+
+    async def llm_calendar_check(
+        self, message: str, session_id: Optional[int] = None
+    ) -> bool:
+        """Classify direct and follow-up questions about UTC2 working schedules."""
+        chat_history = self._recent_chat_context(session_id)
+        prompt = f"""Phân loại câu hỏi có cần tra cứu LỊCH CÔNG TÁC/LỊCH HỌP chính thức của UTC2 hay không.
+
+Trả về duy nhất một từ:
+- CALENDAR: hỏi lịch công tác, lịch họp, sự kiện trong lịch làm việc; hoặc câu hỏi nối tiếp như "còn thứ 6?", "ai tham dự?", "ở phòng nào?" khi lịch sử đang nói về lịch công tác.
+- OTHER: thời khóa biểu, lịch học, lịch thi, tuyển sinh, quy định, tin tức hoặc chủ đề khác.
+
+Lịch sử gần đây:
+{chat_history}
+
+Câu hỏi mới:
+{message}
+"""
+        try:
+            response = await self.control_llm.ainvoke(prompt)
+            result = self._message_text(response).strip().upper()
+            return result.startswith("CALENDAR")
+        except Exception as exc:
+            self._debug_log(f"llm_calendar_check failed type={type(exc).__name__}")
+            return False
+
     async def enrich_query(self, session_id: str, user_message: str, unit: Optional[str] = None) -> str:
         memory = memory_service.get_memory(session_id)
         mem_vars = memory.load_memory_variables({})
@@ -1397,6 +1461,174 @@ class TrainingService:
         except SQLAlchemyError as e:
             db.rollback()
             print(f" Database error during chat transaction: {e}")
+        finally:
+            db.close()
+
+    async def stream_response_from_calendar(
+        self,
+        calendar_service: UTC2CalendarService,
+        session_id: int,
+        user_id: Optional[int],
+        message: str,
+    ):
+        """Run a bounded tool-calling agent for UTC2 calendar questions."""
+        db = SessionLocal()
+        try:
+            user_msg = ChatInteraction(
+                message_text=message,
+                timestamp=datetime.now(),
+                rating=None,
+                is_from_bot=False,
+                sender_id=user_id or None,
+                session_id=session_id,
+            )
+            db.add(user_msg)
+            db.flush()
+
+            memory = memory_service.get_memory(session_id)
+            chat_history = self._recent_chat_context(session_id)
+            current_date = calendar_service.today()
+
+            async def search_utc2_calendar(reference_date: str) -> str:
+                """Search the official UTC2 working schedule for one week."""
+                try:
+                    parsed_date = date.fromisoformat(reference_date)
+                except (TypeError, ValueError):
+                    return json.dumps(
+                        {
+                            "is_error": True,
+                            "error_type": "validation_error",
+                            "message": (
+                                "reference_date phải theo định dạng YYYY-MM-DD, "
+                                f"nhận được: {reference_date!r}"
+                            ),
+                        },
+                        ensure_ascii=False,
+                    )
+                if parsed_date.year < 2015 or parsed_date.year > current_date.year + 2:
+                    return json.dumps(
+                        {
+                            "is_error": True,
+                            "error_type": "date_out_of_range",
+                            "message": (
+                                "Ngày tra cứu nằm ngoài phạm vi hợp lệ "
+                                f"2015-{current_date.year + 2}."
+                            ),
+                            "reference_date": reference_date,
+                        },
+                        ensure_ascii=False,
+                    )
+                try:
+                    self._debug_log(f"calendar_tool reference_date={reference_date}")
+                    result = await calendar_service.get_context_for_date(
+                        target_date=parsed_date,
+                        current_date=current_date,
+                    )
+                    return result.context
+                except UTC2CalendarError as exc:
+                    return json.dumps(
+                        {
+                            "is_error": True,
+                            "error_type": "calendar_not_found",
+                            "message": str(exc),
+                            "reference_date": reference_date,
+                        },
+                        ensure_ascii=False,
+                    )
+
+            calendar_tool = StructuredTool.from_function(
+                coroutine=search_utc2_calendar,
+                name="search_utc2_calendar",
+                description=(
+                    "Tra cứu lịch công tác/lịch họp chính thức của UTC2 cho tuần "
+                    "chứa một ngày cụ thể. Dùng khi người dùng hỏi hôm nay, hôm qua, "
+                    "tuần này, tuần rồi/tuần trước, tuần sau, ngày viết tắt/thiếu năm, "
+                    "hoặc muốn lọc lịch theo người, địa điểm, nội dung, chủ trì hay "
+                    "yêu cầu chuẩn bị. Công cụ trả JSON đầy đủ bảy ngày của đúng tuần; "
+                    "không dùng cho thời khóa biểu, lịch học hoặc lịch thi."
+                ),
+                args_schema=UTC2CalendarSearchInput,
+            )
+
+            system_prompt = f"""Bạn là agent tra cứu lịch công tác UTC2.
+Ngày hiện tại chính xác là {current_date.isoformat()} ({current_date.strftime('%d/%m/%Y')}), múi giờ Asia/Ho_Chi_Minh.
+
+QUY TRÌNH BẮT BUỘC:
+1. Hiểu câu hỏi mới cùng lịch sử để khôi phục ngữ cảnh, kể cả viết tắt, thiếu dấu, sai chính tả nhẹ và câu nối tiếp.
+2. Tự quy đổi thời gian sang một reference_date ISO nằm trong tuần người dùng muốn hỏi:
+   - "tuần rồi", "tuần trước", "tuan trc" = tuần liền trước tuần hiện tại.
+   - "tuần này" = tuần chứa ngày hiện tại.
+   - "tuần sau" = tuần liền sau.
+   - Ngày thiếu năm dùng năm hợp lý gần ngày hiện tại; không được tự chọn năm xa.
+   - Nếu câu hỏi mới KHÔNG nêu mốc thời gian nhưng là câu nối tiếp, BẮT BUỘC
+     kế thừa đúng tuần/ngày vừa được tra cứu trong lịch sử; không tự quay về tuần hiện tại.
+3. Bắt buộc gọi search_utc2_calendar đúng một lần.
+4. Sau khi nhận tool result, chỉ dùng dữ liệu đó để trả lời.
+
+QUY TẮC TRẢ LỜI:
+- Lọc chính xác theo người, ngày, giờ, địa điểm, nội dung, người chủ trì hoặc yêu cầu mà người dùng hỏi.
+- Tìm tên linh hoạt theo viết tắt/chức danh, nhưng không gộp nhầm người.
+- Không in nguyên lịch cả tuần nếu câu hỏi chỉ cần một phần.
+- Không lặp tiêu đề tuần theo mẫu cứng nếu không cần.
+- Nếu không có kết quả phù hợp, nói rõ không tìm thấy trong tuần đã tra cứu.
+- Nếu tool trả lỗi, giải thích ngắn gọn và không bịa dữ liệu.
+- Trả lời tiếng Việt, Markdown, không dùng bảng.
+- Nếu tool result có calendar_url, kết thúc bằng link nguồn đó.
+
+LỊCH SỬ HỘI THOẠI:
+{chat_history}
+"""
+            agent_messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=message),
+            ]
+            try:
+                tool_llm = self.control_llm.bind_tools(
+                    [calendar_tool],
+                    tool_choice=calendar_tool.name,
+                )
+                tool_decision = await tool_llm.ainvoke(agent_messages)
+            except Exception:
+                tool_llm = self.control_llm.bind_tools([calendar_tool])
+                tool_decision = await tool_llm.ainvoke(agent_messages)
+
+            tool_calls = getattr(tool_decision, "tool_calls", None) or []
+            if not tool_calls:
+                raise UTC2CalendarError(
+                    "Agent không tạo được lệnh tra cứu lịch công tác."
+                )
+
+            tool_call = tool_calls[0]
+            tool_result = await calendar_tool.ainvoke(tool_call.get("args", {}))
+            final_messages = [
+                *agent_messages,
+                tool_decision,
+                ToolMessage(
+                    content=str(tool_result),
+                    tool_call_id=tool_call["id"],
+                ),
+            ]
+            full_response = ""
+            async for chunk in self.answer_llm.astream(final_messages):
+                text = self._message_text(chunk)
+                full_response += text
+                yield text
+                await asyncio.sleep(0)
+
+            memory.save_context({"input": message}, {"output": full_response})
+            bot_msg = ChatInteraction(
+                message_text=full_response,
+                timestamp=datetime.now(),
+                rating=None,
+                is_from_bot=True,
+                sender_id=None,
+                session_id=session_id,
+            )
+            db.add(bot_msg)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
         finally:
             db.close()
 

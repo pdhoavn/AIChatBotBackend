@@ -32,6 +32,7 @@ from app.api.routes import (
     question_log_controller,
     messenger_controller,
     digitization_controller,
+    calendar_controller,
 )
 
 logger = logging.getLogger(__name__)
@@ -182,6 +183,9 @@ app.include_router(
 )
 app.include_router(
     digitization_controller.router, prefix="/consultant/digitization", tags=["Document Digitization"]
+)
+app.include_router(
+    calendar_controller.router, prefix="/calendar", tags=["UTC2 Calendar"]
 )
 
 

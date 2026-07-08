@@ -19,7 +19,11 @@ import uuid
 from app.models.database import SessionLocal
 from app.services import training_service
 from app.services.training_service import TrainingService
-from app.models.entities import ( KnowledgeBaseDocument, )
+from app.services.utc2_calendar_service import (
+    UTC2CalendarError,
+    UTC2CalendarService,
+)
+from app.models.entities import KnowledgeBaseDocument
 
 class ChatStreamRequest(BaseModel):
     """Request body cho endpoint SSE /stream."""
@@ -35,6 +39,7 @@ class ChatStreamRequest(BaseModel):
 router = APIRouter()
 # Tạo 1 instance dùng chung
 service = TrainingService()
+calendar_service = UTC2CalendarService()
 load_dotenv()
 
 
@@ -85,6 +90,58 @@ async def websocket_chat(websocket: WebSocket):
                 f"incoming_message session_id={session_id} user_id={user_id} message_len={len(message)}",
                 trace_id,
             )
+
+            is_calendar_request = calendar_service.is_calendar_query(message)
+            if not is_calendar_request:
+                is_calendar_request = await service.llm_calendar_check(
+                    message, session_id=session_id
+                )
+
+            if is_calendar_request:
+                try:
+                    async for chunk in service.stream_response_from_calendar(
+                        calendar_service=calendar_service,
+                        session_id=session_id,
+                        user_id=user_id,
+                        message=message,
+                    ):
+                        await websocket.send_text(
+                            json.dumps(
+                                {"event": "chunk", "content": str(chunk)},
+                                ensure_ascii=False,
+                            )
+                        )
+                    await websocket.send_json(
+                        {"event": "done", "sources": [], "confidence": 1.0}
+                    )
+                    _chat_log("done tier=utc2_calendar_agent", trace_id)
+                except UTC2CalendarError as exc:
+                    _chat_log(f"utc2_calendar_error message={exc}", trace_id)
+                    await websocket.send_json(
+                        {
+                            "event": "chunk",
+                            "content": (
+                                "Hiện chưa thể truy xuất lịch công tác từ website "
+                                f"UTC2. {exc}"
+                            ),
+                        }
+                    )
+                    await websocket.send_json(
+                        {"event": "done", "sources": [], "confidence": 0.0}
+                    )
+                except Exception as exc:
+                    _chat_log(
+                        f"utc2_calendar_llm_error type={type(exc).__name__}",
+                        trace_id,
+                    )
+                    fallback = await calendar_service.answer_query(message)
+                    await websocket.send_json(
+                        {"event": "chunk", "content": fallback.answer}
+                    )
+                    await websocket.send_json(
+                        {"event": "done", "sources": [], "confidence": 0.8}
+                    )
+                continue
 
             # enrich_query — tạo truy vấn "đầy đủ" dựa vào hội thoại cũ
             enriched_query = await service.enrich_query(session_id, message)
@@ -398,6 +455,7 @@ async def stream_chat(
     intent_id_from_client = body.intent_id
     unit = body.unit
     top_k = os.getenv("TOP_K", 5)
+    is_calendar_request = calendar_service.is_calendar_query(message)
     # Guest user/session có ID random không tồn tại trong DB
     # → reset None để service tự tạo mới (giống WS cũ)
     from app.models.entities import Users, ChatSession
@@ -426,7 +484,17 @@ async def stream_chat(
             iter([_sse_event({"event": "error", "message": "Message is empty"})]),
             media_type="text/event-stream",
         )
-    if audience_id != 4:
+
+    # Tạo session trước để LLM calendar classifier hiểu được câu hỏi nối tiếp.
+    if not session_id:
+        session_id = sse_service.create_chat_session(user_id, "chatbot")
+
+    if not is_calendar_request:
+        is_calendar_request = await service.llm_calendar_check(
+            message, session_id=session_id
+        )
+
+    if not is_calendar_request and audience_id != 4:
             print(f"checking admission")
             check_admission = await service.llm_admission_check(message, unit)
             if check_admission:
@@ -437,9 +505,6 @@ async def stream_chat(
                 if check_listing:
                     print(f"check admission and top K complete")
                     top_k = 20
-    # Tạo session nếu chưa có hoặc không tồn tại trong DB
-    if not session_id:
-        session_id = sse_service.create_chat_session(user_id, "chatbot")
 
     async def event_generator():
         local_top_k = top_k
@@ -452,6 +517,45 @@ async def stream_chat(
             f"[SSE] incoming_message session_id={session_id} user_id={user_id} message_len={len(message)}",
             trace_id,
         )
+
+        if is_calendar_request:
+            try:
+                async for chunk in sse_service.stream_response_from_calendar(
+                    calendar_service=calendar_service,
+                    session_id=session_id,
+                    user_id=user_id,
+                    message=message,
+                ):
+                    yield _sse_event({"event": "chunk", "content": str(chunk)})
+                yield _sse_event(
+                    {"event": "done", "sources": [], "confidence": 1.0}
+                )
+                _chat_log("done tier=utc2_calendar_agent", trace_id)
+            except UTC2CalendarError as exc:
+                _chat_log(f"utc2_calendar_error message={exc}", trace_id)
+                yield _sse_event(
+                    {
+                        "event": "chunk",
+                        "content": (
+                            "Hiện chưa thể truy xuất lịch công tác từ website "
+                            f"UTC2. {exc}"
+                        ),
+                    }
+                )
+                yield _sse_event(
+                    {"event": "done", "sources": [], "confidence": 0.0}
+                )
+            except Exception as exc:
+                _chat_log(
+                    f"utc2_calendar_llm_error type={type(exc).__name__}",
+                    trace_id,
+                )
+                fallback = await calendar_service.answer_query(message)
+                yield _sse_event({"event": "chunk", "content": fallback.answer})
+                yield _sse_event(
+                    {"event": "done", "sources": [], "confidence": 0.8}
+                )
+            return
         
         # --- enrich_query ---
         if audience_id == 4:

@@ -1,6 +1,7 @@
 
 psycopg2-binary
 requests                     # Facebook Messenger Graph API client
+httpx                        # Async HTTP client for auth and UTC2 calendar API
 fastapi==0.104.1              # Web framework
 gunicorn==22.0.0
 uvicorn[standard]==0.24.0     # ASGI server
