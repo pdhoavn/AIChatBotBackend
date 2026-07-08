@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # Facebook Messenger
     FACEBOOK_PAGE_ACCESS_TOKEN: str
     FACEBOOK_VERIFY_TOKEN: str = "messenger_webhook_verify_token"
+    FACEBOOK_UTC2_PAGE_ID: str = ""
+    FACEBOOK_UTC_PAGE_ID: str = ""
+    FACEBOOK_UTC_PAGE_ACCESS_TOKEN: str = ""
     API_VSMARTOFFICE: str
 
     # External OCR API Key

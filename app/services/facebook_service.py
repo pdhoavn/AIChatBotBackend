@@ -38,10 +38,12 @@ class FacebookService:
         text = re.sub(r'\n{3,}', '\n\n', text)
         return text.strip()
 
-    def _send_request(self, payload: dict) -> dict | None:
+    def _send_request(
+        self, payload: dict, page_access_token: str | None = None
+    ) -> dict | None:
         """Gửi request lên Messenger Graph API."""
         url = f"{self.api_url}/me/messages"
-        payload["access_token"] = self.page_token
+        payload["access_token"] = page_access_token or self.page_token
         try:
             response = requests.post(url, json=payload, timeout=30)
             result = response.json()
@@ -53,34 +55,44 @@ class FacebookService:
             logger.error(f"Failed to send message: {e}")
             return None
 
-    def send_text_message(self, sender_psid: str, text: str) -> bool:
+    def send_text_message(
+        self, sender_psid: str, text: str, page_access_token: str | None = None
+    ) -> bool:
         """Gửi text message tới người dùng Messenger."""
         payload = {
             "messaging_type": "RESPONSE",
             "recipient": {"id": sender_psid},
             "message": {"text": text},
         }
-        result = self._send_request(payload)
+        result = self._send_request(payload, page_access_token)
         return result is not None
 
-    def send_typing_on(self, sender_psid: str) -> bool:
+    def send_typing_on(
+        self, sender_psid: str, page_access_token: str | None = None
+    ) -> bool:
         """Bật typing indicator."""
         payload = {
             "recipient": {"id": sender_psid},
             "sender_action": "typing_on",
         }
-        return self._send_request(payload) is not None
+        return self._send_request(payload, page_access_token) is not None
 
-    def send_typing_off(self, sender_psid: str) -> bool:
+    def send_typing_off(
+        self, sender_psid: str, page_access_token: str | None = None
+    ) -> bool:
         """Tắt typing indicator."""
         payload = {
             "recipient": {"id": sender_psid},
             "sender_action": "typing_off",
         }
-        return self._send_request(payload) is not None
+        return self._send_request(payload, page_access_token) is not None
 
     def send_quick_replies(
-        self, sender_psid: str, text: str, quick_replies: list[dict]
+        self,
+        sender_psid: str,
+        text: str,
+        quick_replies: list[dict],
+        page_access_token: str | None = None,
     ) -> bool:
         """
         Gửi message kèm quick reply buttons.
@@ -94,7 +106,7 @@ class FacebookService:
                 "quick_replies": quick_replies,
             },
         }
-        result = self._send_request(payload)
+        result = self._send_request(payload, page_access_token)
         return result is not None
 
     def verify_webhook(self, mode: str, token: str, challenge: str) -> str | None:

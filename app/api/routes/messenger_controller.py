@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import logging
 import os
 
+from app.core.config import settings
 from app.services.facebook_service import facebook_service
 from app.services.training_service import TrainingService
 from app.models.database import SessionLocal
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 service = TrainingService()
 DEFAULT_MESSENGER_AUDIENCE_ID = 1
+DEFAULT_MESSENGER_UNIT = "UTC2"
 TUYENSINH_AUDIENCE_ID = 4
 AUDIENCE_NAMES = {
     1: "Sinh viên",
@@ -26,20 +28,51 @@ MESSENGER_TEXT_LIMIT = 1900
 
 # In-memory cache: sender_psid -> session info
 # Production nên dùng Redis hoặc DB, nhưng đơn giản dùng dict cho POC
-# Structure: {sender_psid: {"session_id": int, "audience_id": int}}
+# Structure: {"page_id:sender_psid": {"session_id": int, "audience_id": int}}
 _messenger_sessions: dict[str, dict] = {}
 
 
-def get_or_create_session(sender_psid: str) -> dict:
+def get_page_config(page_id: str | None) -> dict:
+    """Resolve Page-specific Messenger settings.
+
+    Current UTC2 page keeps using FACEBOOK_PAGE_ACCESS_TOKEN.
+    Future UTC page can be enabled by filling FACEBOOK_UTC_PAGE_ID and
+    FACEBOOK_UTC_PAGE_ACCESS_TOKEN without changing this flow.
+    """
+    page_id = page_id or ""
+    if (
+        page_id
+        and page_id == settings.FACEBOOK_UTC_PAGE_ID
+        and settings.FACEBOOK_UTC_PAGE_ACCESS_TOKEN
+    ):
+        return {
+            "page_id": page_id,
+            "unit": "UTC",
+            "access_token": settings.FACEBOOK_UTC_PAGE_ACCESS_TOKEN,
+        }
+
+    return {
+        "page_id": page_id or settings.FACEBOOK_UTC2_PAGE_ID,
+        "unit": DEFAULT_MESSENGER_UNIT,
+        "access_token": settings.FACEBOOK_PAGE_ACCESS_TOKEN,
+    }
+
+
+def get_session_key(sender_psid: str, page_id: str | None) -> str:
+    return f"{page_id or 'default'}:{sender_psid}"
+
+
+def get_or_create_session(sender_psid: str, page_id: str | None = None) -> dict:
     """Lấy hoặc tạo session info cho messenger user."""
-    if sender_psid in _messenger_sessions:
-        info = _messenger_sessions[sender_psid]
+    session_key = get_session_key(sender_psid, page_id)
+    if session_key in _messenger_sessions:
+        info = _messenger_sessions[session_key]
         if not info.get("audience_id"):
             info["audience_id"] = DEFAULT_MESSENGER_AUDIENCE_ID
         return info
     session_id = service.create_chat_session(user_id=None, session_type="messenger")
     info = {"session_id": session_id, "audience_id": DEFAULT_MESSENGER_AUDIENCE_ID}
-    _messenger_sessions[sender_psid] = info
+    _messenger_sessions[session_key] = info
     return info
 
 
@@ -81,19 +114,27 @@ def split_messenger_text(text: str, limit: int = MESSENGER_TEXT_LIMIT) -> list[s
     return parts
 
 
-def send_messenger_reply(sender_psid: str, reply: str) -> bool:
+def send_messenger_reply(
+    sender_psid: str, reply: str, page_access_token: str | None = None
+) -> bool:
     """Send a Messenger reply and convert set-audience marker to quick replies."""
     should_offer_audience_switch = SET_AUDIENCE_MARKER in reply
     clean_reply = reply.replace(SET_AUDIENCE_MARKER, "").strip()
     sent = True
     for part in split_messenger_text(facebook_service.strip_markdown(clean_reply)):
-        sent = facebook_service.send_text_message(sender_psid, part) and sent
+        sent = (
+            facebook_service.send_text_message(
+                sender_psid, part, page_access_token=page_access_token
+            )
+            and sent
+        )
     if should_offer_audience_switch:
         sent = (
             facebook_service.send_quick_replies(
                 sender_psid,
                 "Bạn muốn chuyển sang nhóm hỗ trợ phù hợp hơn không?",
                 build_audience_switch_quick_replies(),
+                page_access_token=page_access_token,
             )
             and sent
         )
@@ -190,12 +231,15 @@ async def handle_webhook(payload: MessengerWebhookPayload):
         for event in entry.get("messaging", []):
             sender_psid = event.get("sender", {}).get("id")
             recipient_psid = event.get("recipient", {}).get("id")
+            page_config = get_page_config(recipient_psid)
+            page_access_token = page_config["access_token"]
+            unit = page_config["unit"]
             message = event.get("message", {})
             timestamp = event.get("timestamp")
 
             logger.info(
                 f" Messenger event: sender={sender_psid}, recipient={recipient_psid}, "
-                f"timestamp={timestamp}"
+                f"timestamp={timestamp}, unit={unit}"
             )
 
             if not sender_psid:
@@ -208,33 +252,38 @@ async def handle_webhook(payload: MessengerWebhookPayload):
 
                 # Handle GET_STARTED
                 if payload_data == "GET_STARTED":
-                    get_or_create_session(sender_psid)
+                    get_or_create_session(sender_psid, recipient_psid)
                     facebook_service.send_text_message(
                         sender_psid,
-                        "👋 Xin chào! Mình là trợ lý ảo UTC2.\n\n"
+                        f"👋 Xin chào! Mình là trợ lý ảo {unit}.\n\n"
                         "Mặc định mình sẽ hỗ trợ theo nhóm Sinh viên. "
                         "Bạn cứ gửi câu hỏi, nếu cần mình sẽ gợi ý chuyển sang nhóm phù hợp hơn.",
+                        page_access_token=page_access_token,
                     )
                     return {"status": "ok"}
 
                 # Handle RESET_SESSION
                 if payload_data == "RESET_SESSION":
-                    if sender_psid in _messenger_sessions:
-                        del _messenger_sessions[sender_psid]
-                    get_or_create_session(sender_psid)
+                    session_key = get_session_key(sender_psid, recipient_psid)
+                    if session_key in _messenger_sessions:
+                        del _messenger_sessions[session_key]
+                    get_or_create_session(sender_psid, recipient_psid)
                     facebook_service.send_text_message(
                         sender_psid,
                         "🔄 Đã bắt đầu lại phiên hỗ trợ Sinh viên. "
                         "Bạn cứ gửi câu hỏi tiếp theo nhé!",
+                        page_access_token=page_access_token,
                     )
                     return {"status": "ok"}
 
                 if payload_data.startswith("AUDIENCE:"):
                     try:
                         audience_id = int(payload_data.split(":")[1])
-                        info = get_or_create_session(sender_psid)
+                        info = get_or_create_session(sender_psid, recipient_psid)
                         info["audience_id"] = audience_id
-                        _messenger_sessions[sender_psid] = info
+                        _messenger_sessions[
+                            get_session_key(sender_psid, recipient_psid)
+                        ] = info
                         selected_name = AUDIENCE_NAMES.get(
                             audience_id, f"Audience #{audience_id}"
                         )
@@ -242,6 +291,7 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                             sender_psid,
                             f"✓ Đã chuyển sang nhóm **{selected_name}**.\n\n"
                             "Bạn gửi lại câu hỏi hoặc hỏi tiếp nhé!",
+                            page_access_token=page_access_token,
                         )
                     except (ValueError, IndexError):
                         logger.warning(f"Invalid audience payload: {payload_data}")
@@ -259,9 +309,11 @@ async def handle_webhook(payload: MessengerWebhookPayload):
             if quick_reply_payload.startswith("AUDIENCE:"):
                 try:
                     audience_id = int(quick_reply_payload.split(":")[1])
-                    info = get_or_create_session(sender_psid)
+                    info = get_or_create_session(sender_psid, recipient_psid)
                     info["audience_id"] = audience_id
-                    _messenger_sessions[sender_psid] = info
+                    _messenger_sessions[
+                        get_session_key(sender_psid, recipient_psid)
+                    ] = info
                     selected_name = AUDIENCE_NAMES.get(
                         audience_id, f"Audience #{audience_id}"
                     )
@@ -269,12 +321,14 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                         sender_psid,
                         f"✓ Đã chuyển sang nhóm **{selected_name}**.\n\n"
                         "Bạn gửi lại câu hỏi hoặc hỏi tiếp nhé!",
+                        page_access_token=page_access_token,
                     )
                 except (ValueError, IndexError):
                     logger.warning(f"Invalid quick reply payload: {quick_reply_payload}")
                     facebook_service.send_text_message(
                         sender_psid,
-                        "Mình chưa hiểu lựa chọn của bạn. Bạn thử chọn lại nhé!"
+                        "Mình chưa hiểu lựa chọn của bạn. Bạn thử chọn lại nhé!",
+                        page_access_token=page_access_token,
                     )
                 continue
 
@@ -284,6 +338,7 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                     sender_psid,
                     "Hiện tại mình chỉ hỗ trợ tin nhắn văn bản thôi nhé. "
                     "Bạn cứ gửi câu hỏi bằng text, mình sẽ trả lời ngay!",
+                    page_access_token=page_access_token,
                 )
                 continue
 
@@ -292,10 +347,12 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                 continue
 
             # Bật typing indicator trong khi xử lý
-            facebook_service.send_typing_on(sender_psid)
+            facebook_service.send_typing_on(
+                sender_psid, page_access_token=page_access_token
+            )
 
             try:
-                info = get_or_create_session(sender_psid)
+                info = get_or_create_session(sender_psid, recipient_psid)
                 session_id = info["session_id"]
                 audience_id = info.get("audience_id")
 
@@ -314,13 +371,17 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                         session_id, text
                     )
                 else:
-                    enriched_query = await service.enrich_query(session_id, text)
+                    enriched_query = await service.enrich_query(session_id, text, unit)
                 if not enriched_query:
                     reply = (
                         "Mình chưa rõ ý bạn lắm, bạn có thể nói rõ hơn được không?"
                     )
-                    send_messenger_reply(sender_psid, reply)
-                    facebook_service.send_typing_off(sender_psid)
+                    send_messenger_reply(
+                        sender_psid, reply, page_access_token=page_access_token
+                    )
+                    facebook_service.send_typing_off(
+                        sender_psid, page_access_token=page_access_token
+                    )
                     continue
 
                 # Hybrid search - đợi full response (không stream như WS)
@@ -336,6 +397,7 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                     query=enriched_query,
                     intent_id=None,
                     trace_id="fb",
+                    unit=unit,
                 )
                 tier_source = result.get("response_source", "nope")
                 confidence = result.get("confidence", 0.0)
@@ -370,6 +432,7 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                                 trace_id="fb",
                                 stage="messenger_private_qa_fallback",
                                 query_embedding=query_embedding,
+                                unit=unit,
                             )
                             result = service.build_document_search_result(doc_results)
                             result["query_embedding"] = query_embedding
@@ -387,8 +450,14 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                             ):
                                 reply_chunks.append(getattr(chunk, "content", str(chunk)))
                             reply = "".join(reply_chunks)
-                            send_messenger_reply(sender_psid, reply)
-                            facebook_service.send_typing_off(sender_psid)
+                            send_messenger_reply(
+                                sender_psid,
+                                reply,
+                                page_access_token=page_access_token,
+                            )
+                            facebook_service.send_typing_off(
+                                sender_psid, page_access_token=page_access_token
+                            )
                             continue
                     else:
                         # QA not relevant → fallback xuống document
@@ -401,6 +470,7 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                             trace_id="fb",
                             stage="messenger_document_recheck",
                             query_embedding=query_embedding,
+                            unit=unit,
                         )
                         result = service.build_document_search_result(doc_results)
                         confidence = result.get("confidence", 0.0)
@@ -425,8 +495,11 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                         send_messenger_reply(
                             sender_psid,
                             "Nội dung này yêu cầu đăng nhập để xem.",
+                            page_access_token=page_access_token,
                         )
-                        facebook_service.send_typing_off(sender_psid)
+                        facebook_service.send_typing_off(
+                            sender_psid, page_access_token=page_access_token
+                        )
                         continue
 
                 context = build_context_with_sources(context_chunks)
@@ -438,7 +511,7 @@ async def handle_webhook(payload: MessengerWebhookPayload):
 
                 # LLM check xem nên dùng document hay recommendation hay nope
                 tier_check = await service.llm_document_recommendation_check(
-                    enriched_query, context
+                    enriched_query, context, unit=unit
                 )
                 logger.info(f"Messenger tier_check={tier_check}")
                 tier_source = tier_check
@@ -446,23 +519,34 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                 # === TIER 2: document ===
                 if tier_source == "document" and confidence >= confidence_threshold:
                     reply_chunks = []
-                    stream_method = (
-                        service.stream_response_from_context_tuyensinh
-                        if audience_id == TUYENSINH_AUDIENCE_ID
-                        else service.stream_response_from_context
-                    )
-                    async for chunk in stream_method(
-                        enriched_query,
-                        context,
-                        session_id,
-                        None,
-                        intent_id,
-                        text,
-                        query_embedding=query_embedding,
-                        current_audience_id=audience_id,
-                        current_intent_id=None,
-                        confidence=confidence,
-                    ):
+                    if audience_id == TUYENSINH_AUDIENCE_ID:
+                        stream = service.stream_response_from_context_tuyensinh(
+                            enriched_query,
+                            context,
+                            session_id,
+                            None,
+                            intent_id,
+                            text,
+                            query_embedding=query_embedding,
+                            current_audience_id=audience_id,
+                            current_intent_id=None,
+                            confidence=confidence,
+                        )
+                    else:
+                        stream = service.stream_response_from_context(
+                            enriched_query,
+                            context,
+                            session_id,
+                            None,
+                            intent_id,
+                            text,
+                            query_embedding=query_embedding,
+                            current_audience_id=audience_id,
+                            current_intent_id=None,
+                            confidence=confidence,
+                            unit=unit,
+                        )
+                    async for chunk in stream:
                         piece = getattr(chunk, "content", str(chunk))
                         reply_chunks.append(piece)
                     reply = "".join(reply_chunks)
@@ -487,8 +571,12 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                         filtered_sources = []
                         logger.info("Messenger citation_guard skipped: insufficient_answer")
 
-                    send_messenger_reply(sender_psid, reply)
-                    facebook_service.send_typing_off(sender_psid)
+                    send_messenger_reply(
+                        sender_psid, reply, page_access_token=page_access_token
+                    )
+                    facebook_service.send_typing_off(
+                        sender_psid, page_access_token=page_access_token
+                    )
                     continue
 
                 # === TIER 4: nope ===
@@ -503,6 +591,7 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                     current_audience_id=audience_id,
                     current_intent_id=None,
                     query_embedding=query_embedding,
+                    unit=unit,
                 ):
                     reply_chunks.append(getattr(chunk, "content", str(chunk)))
                 reply = "".join(reply_chunks)
@@ -513,16 +602,21 @@ async def handle_webhook(payload: MessengerWebhookPayload):
                         "Bạn thử hỏi theo cách khác nhé!"
                     )
 
-                send_messenger_reply(sender_psid, reply)
+                send_messenger_reply(
+                    sender_psid, reply, page_access_token=page_access_token
+                )
 
             except Exception:
                 logger.exception("Error handling messenger message")
                 facebook_service.send_text_message(
                     sender_psid,
                     "Xin lỗi, hệ thống đang bận. Bạn thử lại sau ít phút nhé.",
+                    page_access_token=page_access_token,
                 )
             finally:
-                facebook_service.send_typing_off(sender_psid)
+                facebook_service.send_typing_off(
+                    sender_psid, page_access_token=page_access_token
+                )
 
     return {"status": "ok"}
 
