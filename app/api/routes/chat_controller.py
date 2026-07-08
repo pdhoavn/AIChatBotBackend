@@ -515,7 +515,7 @@ async def stream_chat(
             a_text = top.payload.get("answer_text")
             intent_id = top.payload.get("intent_id")
             relevance_ok = await sse_service.llm_relevance_check(
-                enriched_query, q_text, a_text, message
+                enriched_query, q_text, a_text, message, unit=unit
             )
             _chat_log(f"training_qa_relevance={relevance_ok}", trace_id)
 
@@ -637,7 +637,7 @@ async def stream_chat(
 
         tier_check_start = time.perf_counter()
         tier_source = await sse_service.llm_document_recommendation_check(
-            enriched_query, context
+            enriched_query, context, unit=unit
         )
         tier_check_elapsed_ms = int((time.perf_counter() - tier_check_start) * 1000)
         _chat_log(
