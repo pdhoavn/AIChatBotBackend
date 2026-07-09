@@ -254,6 +254,11 @@ def api_create_training_qa(
         "status": qa.status,
     }
 
+# @router.get("/UTC2/document")
+# async def add_UTC2_document():
+#     service = TrainingService()
+#     a = await service.backfill_target_units_to_utc2()
+
 
 @router.post("/upload/document")
 async def upload_document(

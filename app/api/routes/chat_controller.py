@@ -428,11 +428,12 @@ async def stream_chat(
         )
     if audience_id != 4:
             print(f"checking admission")
-            check_admission = await service.llm_admission_check(message)
+            check_admission = await service.llm_admission_check(message, unit)
             if check_admission:
                 audience_id = 4
                 print(f"check admission complete")
-                check_listing = await service.llm_listing_check(message)
+                check_listing = await service.llm_listing_check(message, unit)
+                print(f"Check listing is true: {check_listing}")
                 if check_listing:
                     print(f"check admission and top K complete")
                     top_k = 20
@@ -455,11 +456,12 @@ async def stream_chat(
         # --- enrich_query ---
         if audience_id == 4:
             enriched_query = await sse_service.enrich_query_tuyensinh(
-                session_id, message
+                session_id, message, unit
             )
-            check_listing = await service.llm_listing_check(enriched_query)
+            check_listing = await service.llm_listing_check(enriched_query, unit)
+            print(f"Check listing is true: {check_listing}")
             if check_listing:
-                local_top_k = 30
+                local_top_k = 20
         else:
             enriched_query = await sse_service.enrich_query(session_id, message, unit)
       
