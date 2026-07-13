@@ -17,8 +17,9 @@ router = APIRouter()
 def get_suggestions_from_training_api(
     target_audience_id: int = Query(...),
     intent_id: Optional[int] = Query(None),
+    unit: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     return TrainingService.get_suggestion_from_training(
-        db=db, target_audience_id=target_audience_id, intent_id=intent_id
+        db=db, target_audience_id=target_audience_id, intent_id=intent_id, unit=unit
     )

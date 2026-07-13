@@ -40,6 +40,7 @@ from app.models.entities import (
 )
 from app.models.database import SessionLocal
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import or_, func
 from app.services.memory_service import MemoryManager
 from app.services.utc2_calendar_service import UTC2CalendarError, UTC2CalendarService
 from app.utils.document_processor import DocumentProcessor
@@ -815,8 +816,8 @@ Câu hỏi mới:
         key_word = ""
         rule_10 = "10. NẾU người dùng hỏi chung chung về 'chỉ tiêu', 'điểm chuẩn' mà KHÔNG CHỈ ĐỊNH ĐÍCH DANH MỘT NGÀNH HAY HỆ ĐÀO TẠO CỤ THỂ NÀO, BẮT BUỘC bạn phải tự động chèn thêm cụm từ 'đầy đủ của tất cả các ngành ở 1. Các chương trình đào tạo chuẩn GSA_01 đến GSA_23, 2. Các chương trình đào tạo chuẩn thuộc lĩnh vực vi mạch - bán dẫn GSA_06 và GSA_13BD, 3. Các chương trình đào tạo chuẩn thuộc lĩnh vực đường sắt tốc độ cao và đường sắt hiện đại GSA_18DS và GSA_14DS, 4. Các chương trình đào tạo chất lượng cao ở Tuyển sinh' vào câu truy vấn viết lại và không viết gì thêm sau đó."
         if (unit == "UTC"):
-            key_word = "UTC(Mã trường GHA)"
-            rule_10 = "10. NẾU người dùng hỏi chung chung về 'chỉ tiêu', 'điểm chuẩn' mà KHÔNG CHỈ ĐỊNH ĐÍCH DANH MỘT NGÀNH HAY HỆ ĐÀO TẠO CỤ THỂ NÀO, BẮT BUỘC bạn phải tự động chèn thêm cụm từ 'đầy đủ của tất cả các ngành ở 1. Các chương trình đào tạo chuẩn GHA_01 đến GHA_32, 2. Các chương trình đào tạo chuẩn thuộc lĩnh vực vi mạch - bán dẫn GHA33 và GHA22BD, 3. Các chương trình đào tạo chuẩn thuộc lĩnh vực đường sắt tốc độ cao và đường sắt hiện đại, 4. Các chương trình đào tạo chất lượng cao ở Tuyển sinh' vào câu truy vấn viết lại và không viết gì thêm sau đó."
+            key_word = "Trụ sở chính(Mã trường GHA)"
+            rule_10 = "10. NẾU người dùng hỏi chung chung về 'chỉ tiêu', 'điểm chuẩn' mà KHÔNG CHỈ ĐỊNH ĐÍCH DANH MỘT NGÀNH HAY HỆ ĐÀO TẠO CỤ THỂ NÀO, BẮT BUỘC bạn phải tự động chèn thêm cụm từ 'đầy đủ của tất cả các ngành ở 1. Các chương trình đào tạo(CTĐT) chuẩn GHA_01 đến GHA_32, 2. Các chương trình đào tạo chuẩn thuộc lĩnh vực vi mạch - bán dẫn GHA33 và GHA22BD, 3. Các chương trình đào tạo chuẩn thuộc lĩnh vực đường sắt tốc độ cao và đường sắt hiện đại, 4. Các chương trình đào tạo chất lượng cao, Các chương trình liên kết quốc tế (LKQT) ở 4.1 Tuyển sinh và đào tạo tại trụ sở chính' vào câu truy vấn viết lại và không viết gì thêm sau đó."
         else:
             key_word = "Phân hiệu TP.HCM (Mã tuyển sinh GSA)"
         prompt = f"""
@@ -1095,6 +1096,7 @@ Câu hỏi mới:
         print(f"Unit in check doc: {unit}")
         university_name = self.get_university_full_name(unit)
         prompt = f"""Bạn là hệ thống phân loại dữ liệu (Pre-check) cho chatbot RAG tư vấn tuyển sinh của trường {university_name}.
+        CHÚ Ý ĐẶC BIỆT NGHIÊM TRỌNG: UTC VÀ UTC2 LÀ 2 CƠ SỞ KHÁC NHAU, UTC LÀ TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI VÀ UTC2 LÀ PHÂN HIỆU TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI TẠI TPHCM
         === DỮ LIỆU CƠ SỞ (UNIT) ===
         QUY TẮC ĐỐI CHIẾU CƠ SỞ (UNIT ISOLATION):
         Cơ sở hiện tại của phiên chat là {unit}.
@@ -1108,12 +1110,12 @@ Câu hỏi mới:
         Nếu Context không có thông tin của 1 trong 2 cơ sở thì đó là THÔNG TIN CHUNG CHO CẢ 2 CƠ SỞ, context có thể liên quan để dùng trả lời, bạn chỉ cần check context ở LUẬT PHÂN LOẠI xem có thõa mãn các điều kiện không?
         Nhiệm vụ của bạn là kiểm tra xem đoạn tài liệu (Context) được trích xuất từ cơ sở dữ liệu CÓ GIÁ TRỊ THAM KHẢO để trả lời câu hỏi của người dùng hay không.
         === QUY TẮC XÁC ĐỊNH CƠ SỞ (UNIT MATCHING) ===
-        "UTC2": "NHÓM TỪ KHÓA CƠ SỞ HCM: Trường, Phân hiệu, UTC2, Cơ sở II, Cơ sở 2, CSII, CS2, TP.HCM, Phân hiệu TP.HCM, cơ sở tại thành phố",
+        "UTC2": "NHÓM TỪ KHÓA CƠ SỞ HCM: Trường, Phân hiệu, UTC2, Cơ sở II, Cơ sở 2, CSII, CS2, TP.HCM, Phân hiệu TP.HCM, cơ sở tại thành phố, GSA",
         "UTC": "NHÓM TỪ KHÓA CƠ SỞ Hà Nội(HN): Trụ sở chính, Cơ sở I, Hà Nội, GHA, cơ sở Hà Nội",  
         Bạn phải đánh giá Context dựa trên tham số Unit ở trên:
             1. HỢP LỆ (Khớp Unit): Context chứa thông tin nhắc đích danh đến Unit đang xét.
-            2. HỢP LỆ (Dùng chung): Context là tài liệu chung của toàn trường (như "Quy chế chung", "Trường Đại học GTVT" nói chung) mà KHÔNG chỉ định giới hạn riêng cho một cơ sở nào.
-            3. KHÔNG HỢP LỆ (Sai Unit): Context chỉ định RÕ RÀNG VÀ DUY NHẤT là áp dụng cho cơ sở/phân hiệu KHÁC với Unit đang xét (Ví dụ: Unit là UTC nhưng tài liệu ghi "Chỉ áp dụng tại cơ sở phân hiệu TPHCM (UTC2)", hoặc ngược lại).
+            2. HỢP LỆ (Dùng chung): Context là tài liệu chung của toàn trường (như "Quy chế chung", "Trường Đại học GTVT" nói chung) mà KHÔNG chỉ định giới hạn riêng cho một cơ sở nào. Trong tài liệu sẽ có cả 2 cơ sở, cơ sở chính và phân hiệu TPHCM
+            3. KHÔNG HỢP LỆ (Sai Unit): TH1: Context chỉ định RÕ RÀNG VÀ DUY NHẤT là áp dụng cho cơ sở/phân hiệu KHÁC với Unit đang xét (Ví dụ: Unit là UTC nhưng tài liệu ghi "Chỉ áp dụng tại cơ sở phân hiệu TPHCM (UTC2)", hoặc ngược lại). TH2: Câu hỏi của người dùng có cơ sở/phân hiệu KHÁC với Unit đang xét (Ví dụ: Unit là UTC2 nhưng trong câu hỏi người dùng có ghi "cho tôi thông tin UTC" và ngược lại).
         === QUY TẮC NGẦM HIỂU HỆ ĐÀO TẠO ===
             - Nếu câu hỏi của người dùng KHÔNG đề cập rõ ràng đến một hệ đào tạo cụ thể nào (ví dụ: vừa làm vừa học, từ xa, thạc sĩ, tiến sĩ, liên thông...), bạn BẮT BUỘC phải ngầm hiểu người dùng đang hỏi về hệ "CHÍNH QUY(CHINH QUY)".
             - Nếu người dùng có chỉ định rõ hệ đào tạo, hãy xét duyệt dựa trên hệ đào tạo đó.
@@ -1279,7 +1281,7 @@ Câu hỏi mới:
         suggestion_threshold = float(os.getenv("CONFIDENCE_SCORE", 0.35))
         try:
             if not user_id:
-                # 🧩 1. Lưu tin nhắn người dùng
+                # 1. Lưu tin nhắn người dùng
                 user_msg = ChatInteraction(
                     message_text=message,
                     timestamp=datetime.now(),
@@ -1291,7 +1293,7 @@ Câu hỏi mới:
                 db.add(user_msg)
                 db.flush()
             else:
-                # 🧩 1. Lưu tin nhắn người dùng
+                
                 user_msg = ChatInteraction(
                     message_text=message,
                     timestamp=datetime.now(),
@@ -1644,19 +1646,14 @@ LỊCH SỬ HỘI THOẠI:
         current_audience_id: int = None,
         current_intent_id: int = None,
         confidence: float = 5.0,
+        unit: Optional[str] = None,
     ):
+        key_word = "mã trường GSA"
+        if (unit == "UTC"):
+            key_word = "mã trường GHA"
+        
+            
         print("vào doc stream tuyen sinh")
-        results, _ = await self.async_qdrant_client.scroll(
-        collection_name="knowledge_base_documents",
-        scroll_filter={
-            "must": [{"key": "document_id", "match": {"value": 583}}]
-        },
-        limit=5,
-        with_payload=True,
-    )
-        for r in results:
-            print("Print CHUNK")
-            print(r.payload.get("chunk_text", "")[:100])
         print(context)
         db = SessionLocal()
         suggestion_threshold = float(os.getenv("CONFIDENCE_SCORE", 0.35))
@@ -1689,16 +1686,19 @@ LỊCH SỬ HỘI THOẠI:
             memory = memory_service.get_memory(session_id)
             mem_vars = memory.load_memory_variables({})
             chat_history = mem_vars.get("chat_history", "")
+            university_name = self.get_university_full_name(unit)
             full_response = ""
             suggestion = None
 
             print("→ going to LLM context tuyensinh")
 
-            prompt = f"""Bạn là một chatbot tra cứu thông tuyển sinh chuyên nghiệp của trường {self.university_name}, mã tuyển sinh GSA
+            prompt = f"""Bạn là một chatbot tra cứu thông tuyển sinh chuyên nghiệp của trường {university_name}, {key_word}
             QUY TẮC XƯNG HÔ VÀ SỞ HỮU DỮ LIỆU (PERSONA & DATA OWNERSHIP):
-                Nhập vai tuyệt đối: Bạn là Trợ lý ảo của Nhà trường, toàn bộ thông tin trong Context là "Não bộ" và "Cơ sở dữ liệu của hệ thống UTC2". Người dùng cuối KHÔNG cung cấp tài liệu cho bạn.
+                Nhập vai tuyệt đối: Bạn là Trợ lý ảo của Nhà trường, toàn bộ thông tin trong Context là "Não bộ" và "Cơ sở dữ liệu của hệ thống {unit}". Người dùng cuối KHÔNG cung cấp tài liệu cho bạn.
                 CÁC TỪ NGỮ BỊ CẤM (TUYỆT ĐỐI KHÔNG DÙNG): "theo dữ liệu bạn cung cấp", "trong đoạn ngữ cảnh", "theo văn bản bạn gửi", "tài liệu trên".
-                CÁC TỪ NGỮ BẮT BUỘC DÙNG ĐỂ THAY THẾ: "Theo thông tin hiện có trên hệ thống...", "Theo quy định của Nhà trường...", "Theo dữ liệu của UTC2...".
+                CÁC TỪ NGỮ BẮT BUỘC DÙNG ĐỂ THAY THẾ: "Theo thông tin hiện có trên hệ thống...", "Theo quy định của Nhà trường...", "Theo dữ liệu của hệ thống...".
+                CHÚ Ý ĐẶC BIỆT NGHIÊM TRỌNG: UTC VÀ UTC2 LÀ 2 CƠ SỞ KHÁC NHAU, UTC LÀ TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI VÀ UTC2 LÀ PHÂN HIỆU TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI TẠI TPHCM
+                CƠ SỞ CỦA PHIÊN CHAT HIỆN TẠI: {unit}
             === PHONG CÁCH TRẢ LỜI ===
             Cách trả lời:
                 - ĐỐI VỚI DỮ LIỆU SỐ LƯỢNG/CHỈ TIÊU: BẮT BUỘC trình bày dưới dạng danh sách gạch đầu dòng (bullet points) thật gọn gàng, dễ nhìn.
@@ -1718,13 +1718,6 @@ LỊCH SỬ HỘI THOẠI:
                 - Nếu cần, hướng dẫn từng bước
                 - Gợi ý thông tin liên quan hữu ích
                 - Nếu có đường dẫn liên quan đến nội dung người dùng muốn biết, có thể gợi ý để họ tự tìm hiểu thêm, TUYỆT ĐỐI không được lấy đường dẫn không liên quan đến nội dung trả lời
-                === TỪ ĐIỂN ĐỒNG NGHĨA (BẮT BUỘC GHI NHỚ) ===
-                Trong mọi tài liệu và câu hỏi, bạn PHẢI TỰ ĐỘNG HIỂU các cụm từ sau đây là ĐỒNG NGHĨA và CHỈ CÙNG MỘT CƠ SỞ ĐÀO TẠO:
-                1. "Phân hiệu Trường Đại học Giao thông Vận tải tại TP. Hồ Chí Minh"
-                2. "Phân hiệu tại TP.HCM"
-                3. "UTC2"
-                4. "Mã trường GSA" / "Mã tuyển sinh GSA"
-                (Ví dụ: Nếu tài liệu ghi là "Mã tuyển sinh GSA", bạn được quyền hiểu và trả lời cho câu hỏi về "UTC2").
             === KỶ LUẬT THÉP (BẮT BUỘC TUÂN THỦ TÙY TÌNH HUỐNG) ===
             1. CHỐNG BỊA ĐẶT ĐA HỆ ĐÀO TẠO: Ngành nào CÓ TÊN TRONG BẢNG CỦA HỆ NÀO thì mới được liệt kê vào hệ đào tạo đó. TUYỆT ĐỐI KHÔNG copy số liệu của hệ Chính quy xuống gán cho hệ khác. Nếu bảng của hệ đó không có tên ngành, BẮT BUỘC kết luận: "Tài liệu không có thông tin chỉ tiêu cho ngành này ở hệ [Tên hệ]."
             2. PHÂN BIỆT NHÓM NGÀNH VÀ NGÀNH: TUYỆT ĐỐI KHÔNG lấy tổng chỉ tiêu của cả một "Nhóm ngành" để gán cho một "Ngành" đơn lẻ. Nếu chỉ có số liệu nhóm, trả lời: "Tài liệu hiện tại chỉ thống kê chỉ tiêu tổng của cả Nhóm ngành [Tên nhóm] là [Số lượng], chưa có số liệu tách riêng cho ngành này."
@@ -1742,16 +1735,20 @@ LỊCH SỬ HỘI THOẠI:
                 - Khi trích xuất thông tin từ Context, CHỈ ĐƯỢC PHÉP giữ lại những quy định/thủ tục ÁP DỤNG ĐÚNG cho điều kiện của người dùng.
                 - LỆNH CẤM: TUYỆT ĐỐI KHÔNG copy thừa thãi các quy định dành cho đối tượng khác. (Ví dụ: Nếu người dùng hỏi cách đăng ký cho thí sinh "tốt nghiệp năm 2026", CẤM liệt kê thủ tục dành riêng cho thí sinh "tốt nghiệp trước năm 2026", trừ khi thủ tục đó là quy định chung cho tất cả).
                 - Hướng dẫn gom nhóm: Nếu có các trường hợp ngoại lệ (ví dụ: dùng minh chứng điểm cộng, xét tuyển thẳng), phải ghi rõ "CHỈ ÁP DỤNG NẾU bạn thuộc diện..." để người dùng không bị hiểu lầm.
-            7. Khi trả lời câu hỏi về Phân hiệu TP.HCM (mã GSA), chỉ được sử dụng các mã xét tuyển bắt đầu bằng "GSA_". TUYỆT ĐỐI KHÔNG được tự thay thế prefix "GHA" thành "GSA".
+            7. Khi trả lời câu hỏi về Phân hiệu TP.HCM (mã GSA), chỉ được sử dụng các mã xét tuyển bắt đầu bằng "GSA_". Còn nếu ngược lại là cơ sở chính(mã GHA) chỉ được sử dụng các mã xét tuyển bắt đầu bằng "GHA_".
             === HƯỚNG DẪN XỬ LÝ ===
             - Dựa vào thông tin tham khảo trên được cung cấp
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
-            - Bạn là chatbot tra cứu thông tin chuyên nghiệp của {self.university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác hay phân hiệu khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
+            - Bạn là chatbot tra cứu thông tin chuyên nghiệp của {university_name}, nếu câu hỏi yêu cầu thông tin của một trường khác hay phân hiệu khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
             - Nếu không tìm thấy thông tin → Nói rõ hệ thống mục tuyển sinh chưa có dữ liệu, →  Có thể chọn đường dẫn chọn phù hợp từ context để gợi ý
             chỉ khi đường dẫn đó TRỰC TIẾP xử lý đúng vấn đề được hỏi.
             - QUY TẮC KÍCH HOẠT LIỆT KÊ NGÀNH (CHỈ DÙNG KHI CÓ YÊU CẦU RÕ RÀNG):
                 + NẾU VÀ CHỈ NẾU người dùng hỏi TRỰC TIẾP đến "Ngành nào", "Danh sách ngành", "Chỉ tiêu cụ thể", bạn MỚI ĐƯỢC PHÉP liệt kê ngành. Lúc này, BẮT BUỘC rà soát toàn bộ bảng, liệt kê ĐẦY ĐỦ TẤT CẢ các ngành. TUYỆT ĐỐI KHÔNG bỏ sót hoặc tự ý tóm tắt.
                 + NGƯỢC LẠI, nếu người dùng CHỈ hỏi về "Hệ đào tạo" hoặc "Phương thức", CẤM liệt kê danh sách ngành bên trong hệ đó để tránh dài dòng. Chỉ liệt kê Tên Hệ/Phương thức là đủ.
+                + TUYỆT ĐỐI KHÔNG bỏ sót, không tự ý tóm tắt, và TUYỆT ĐỐI KHÔNG chỉ liệt kê mỗi mã xét tuyển trống không.
+                    ĐỊNH DẠNG LIỆT KÊ BẮT BUỘC: Khi liệt kê các ngành và chỉ tiêu, BẮT BUỘC phải trích xuất và hiển thị đầy đủ thông tin theo cú pháp: [Mã xét tuyển] - [Tên chương trình/ngành] - Chỉ tiêu: [Số lượng]. 
+                    Ví dụ: GSA01 - Ngôn ngữ Anh - Chỉ tiêu: 50. 
+                    TUYỆT ĐỐI KHÔNG chỉ in ra mỗi mã xét tuyển và con số.
             - XỬ LÝ TÌNH HUỐNG HỎI CHUNG CHUNG (AMBIGUITY): Nếu người dùng hỏi chung chung mà context có nhiều hệ đào tạo:
                 + CHỈ liệt kê các hệ đào tạo MÀ CONTEXT CÓ DỮ LIỆU THỰC TẾ.
                 + TUYỆT ĐỐI không tự suy ra hoặc thêm vào các hệ không có trong context.
@@ -1832,6 +1829,7 @@ LỊCH SỬ HỘI THOẠI:
         user_id: int = 1,
         intent_id: int = 1,
         message: str = "",
+        unit: Optional[str] = None,
     ):
         db = SessionLocal()
         try:
@@ -1862,13 +1860,15 @@ LỊCH SỬ HỘI THOẠI:
 
                 db.add(user_msg)
                 db.flush()
-
+            university_name = self.get_university_full_name(unit)
             memory = memory_service.get_memory(session_id)
             mem_vars = memory.load_memory_variables({})
             chat_history = mem_vars.get("chat_history", "")
 
             prompt = f"""
-            Bạn là chatbot tra cứu thông tin chuyên nghiệp của trường {self.university_name}.
+            Bạn là chatbot tra cứu thông tin chuyên nghiệp của trường {university_name}.
+            CHÚ Ý ĐẶC BIỆT NGHIÊM TRỌNG: UTC VÀ UTC2 LÀ 2 CƠ SỞ KHÁC NHAU, UTC LÀ TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI VÀ UTC2 LÀ PHÂN HIỆU TRƯỜNG ĐẠI HỌC GIAO THÔNG VẬN TẢI TẠI TPHCM
+            CƠ SỞ CỦA PHIÊN CHAT HIỆN TẠI: {unit}
             Cách trả lời:
                 - Dễ hiểu
                 - Thân thiện
@@ -1915,7 +1915,7 @@ LỊCH SỬ HỘI THOẠI:
                 Email: bankt-dbcl@utc2.edu.vn
             === HƯỚNG DẪN TRẢ LỜI ===
             - Chỉ sử dụng "đoạn hội thoại trước" để hiểu ngữ cảnh câu hỏi, không dùng "đoạn hội thoại trước" làm nguồn thông tin trả lời.
-            - Bạn là tư vấn tuyển sinh của trường {self.university_name}, nhớ kiểm tra kĩ rõ ràng câu hỏi, nếu câu hỏi yêu cầu thông tin của một trường khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
+            - Bạn là tư vấn tuyển sinh của trường {university_name}, nhớ kiểm tra kĩ rõ ràng câu hỏi, nếu câu hỏi yêu cầu thông tin của một trường khác thì nói rõ là không có dữ liệu trong hệ thống hiện tại
             - Nếu câu hỏi chỉ là chào hỏi, hỏi thời tiết, hoặc các câu xã giao, hãy trả lời bằng lời chào thân thiện, giới thiệu về bản thân chatbot, KHÔNG kéo thêm thông tin chi tiết trong context.
             Đây là đoạn hội thoại trước: 
             {chat_history}
@@ -2173,6 +2173,9 @@ LỊCH SỬ HỘI THOẠI:
             - Hãy nói rõ danh mục {filtered_audience_names} hiện tại không có thông tin mà người dùng cần
             - Đưa ra cách giải quyết cụ thể (liên hệ phòng ban phù hợp hoặc kênh hỗ trợ chính thức)
             - Nếu có thể, gợi ý loại đơn vị cần liên hệ dựa theo trường đại học bạn đang tư vấn (ví dụ: Phòng Tổ chức Hành chính, Phòng Đào tạo...)
+            3. CÁCH XỬ LÝ KHI NỘI DUNG TRONG CONTEXT HOẶC CÂU HỎI NGƯỜI DÙNG CÓ THÔNG TIN CƠ SỞ KHÁC VỚI CƠ SỞ CỦA PHIÊN CHAT HIỆN TẠI:
+            - Câu trả lời bạn có thể tham khảo: "Hiện tại mình chưa có dữ liệu phù hợp cho phần "nội dung context" bạn đang cần, vì phiên chat này bạn đang ở đơn vị "CƠ SỞ HIỆN TẠI" chứ không phải đơn vị "CƠ SỞ NGƯỜI DÙNG MUỐN HOẶC CƠ SỞ CỦA NỘI DUNG CONTEXT KHÁC VỚI CƠ SỞ HIỆN TẠI". Nên mình không thể lấy thông tin của đơn vị "CƠ SỞ NGƯỜI DÙNG MUỐN HOẶC CƠ SỞ CỦA NỘI DUNG CONTEXT KHÁC VỚI CƠ SỞ HIỆN TẠI" để trả lời chính xác được.
+            Nếu bạn cần tra cứu đúng của đơn vị "CƠ SỞ NGƯỜI DÙNG MUỐN HOẶC CƠ SỞ CỦA NỘI DUNG CONTEXT KHÁC VỚI CƠ SỞ HIỆN TẠI", bạn vui lòng chuyển sang đúng đơn vị nhé."
             === NGUYÊN TẮC BẮT BUỘC ===
             - CẤM TRẢ LỜI TỪ CONTEXT: Tuyệt đối KHÔNG ĐƯỢC trích xuất, tóm tắt hay cố gắng sử dụng thông tin trong phần "CÂU TRẢ LỜI CHÍNH THỨC" (Context) để trả lời người dùng. VÌ bạn là tầng phản hồi của chatbot tra cứu thông tin, Hãy coi như Context này là NGỮ CẢNH ĐƯỢC CUNG CẤP
             KHÔNG PHÙ HỢP hoặc CHƯA CÓ DATA với ý định câu hỏi người dùng.
@@ -2238,7 +2241,7 @@ LỊCH SỬ HỘI THOẠI:
             db.close()
 
     def get_suggestion_from_training(
-        db: Session, target_audience_id: int, intent_id: Optional[int] = None
+        db: Session, target_audience_id: int, intent_id: Optional[int] = None, unit: Optional[str] = None,
     ):
 
         query = db.query(TrainingQuestionAnswer).filter(
@@ -2259,6 +2262,17 @@ LỊCH SỬ HỘI THOẠI:
         # filter theo intent nếu có
         if intent_id is not None and intent_id != 0:
             query = query.filter(TrainingQuestionAnswer.intent_id == intent_id)
+        
+        # Filter theo unit: câu hỏi chưa gán unit (target_units rỗng) áp dụng cho mọi nơi,
+        # câu hỏi đã gán unit thì phải khớp đúng unit đang hỏi
+        if unit:
+            query = query.filter(
+                or_(
+                TrainingQuestionAnswer.target_units == None,
+                func.cardinality(TrainingQuestionAnswer.target_units) == 0,
+                TrainingQuestionAnswer.target_units.any(unit),
+                )
+            )
 
         return query.order_by(TrainingQuestionAnswer.created_at.desc()).limit(5).all()
 
@@ -2898,7 +2912,7 @@ LỊCH SỬ HỘI THOẠI:
 
     def _header_chunks(
         self, markdown: str, header_splitter, char_splitter
-    ) -> list[str]:
+    ) -> list[dict]:
         """Chunk có header context — dùng cho DOCX và PDF có heading."""
         header_docs = header_splitter.split_text(markdown)
         split_docs = char_splitter.split_documents(header_docs)
@@ -2915,15 +2929,26 @@ LỊCH SỬ HỘI THOẠI:
                 continue
             if headers:
                 text = f"[{' > '.join(headers)}]\n{text}"
-            chunks.append(text)
+            chunks.append({
+            "text": text,
+            "section_path": headers,          # ["II. TUYỂN SINH...", "3. VLVH...", "3.4.1..."]
+            "section_leaf": headers[-1] if headers else None,  # "3.4.1. Tuyển sinh..."
+            })
         result = []
-        for chunk in chunks:
-            result.extend(self._split_large_table(chunk, max_rows=3))
+        for c in chunks:
+            for sub_text in self._split_large_table(c["text"], max_rows=3):
+                result.append({**c, "text": sub_text})
         return result
 
-    def _plain_chunks(self, content: str, char_splitter) -> list[str]:
-        """Chunk plain text — dùng cho TXT, OCR, xlsx, pptx..."""
-        return [c for c in char_splitter.split_text(content) if c.strip()]
+    # def _plain_chunks(self, content: str, char_splitter) -> list[str]:
+    #     """Chunk plain text — dùng cho TXT, OCR, xlsx, pptx..."""
+    #     return [c for c in char_splitter.split_text(content) if c.strip()]
+    def _plain_chunks(self, content: str, char_splitter) -> list[dict]:
+        return [
+            {"text": c, "section_path": [], "section_leaf": None}
+            for c in char_splitter.split_text(content)
+            if c.strip()
+        ]
     def _merge_wrapped_lines(self, lines: list[str]) -> list[str]:
         """
         Merge dòng bị word-wrap: nếu dòng hiện tại match TITLE_PATTERN
@@ -2949,8 +2974,8 @@ LỊCH SỬ HỘI THOẠI:
             i += 1
         return result
     def _restructure_personnel_blocks(
-    self, chunks: list[str], unit_name: str
-) -> list[str]:
+    self, chunks: list[dict], unit_name: str
+) -> list[dict]:
         """
         Post-process chunks sau khi split:
         - Detect block nhân sự bị merge cột
@@ -2962,16 +2987,15 @@ LỊCH SỬ HỘI THOẠI:
             for chunk in chunks
         ]
 
-    def _try_restructure_chunk(self, chunk: str, unit_name: str) -> str:
+    def _try_restructure_chunk(self, chunk: dict, unit_name: str) -> dict:
         """
         Thử restructure một chunk.
         Nếu không nhận diện được pattern → trả về nguyên bản.
         """
-        if self._is_personnel_block(chunk):
-            return self._restructure_personnel(chunk, unit_name)
-        # Thêm các loại khác tại đây trong tương lai:
-        # if self._is_schedule_block(chunk):
-        #     return self._restructure_schedule(chunk)
+        text = chunk["text"]
+        if self._is_personnel_block(text):
+            new_text = self._restructure_personnel(text, unit_name)
+            return {**chunk, "text": new_text}   # giữ section_path/section_leaf, chỉ thay text
         return chunk
 
     # ============================================================
@@ -4063,7 +4087,32 @@ Yêu cầu:
             )
             print(f"Qdrant search_training_qa timeout/error: {e}")
             return []
+    async def get_chunks_by_section(
+    self, document_id: int, section_leaf: str, limit: int = 200
+):
+        """
+        Lấy TOÀN BỘ chunk cùng section_leaf trong 1 document — dùng khi cần liệt kê
+        đầy đủ (vd bảng chỉ tiêu dài bị chunk thành nhiều mảnh), thay vì dựa vào
+        top_k similarity có thể bỏ sót các dòng nằm ngoài top_k.
+        """
+        if not document_id or not section_leaf:
+            return []
 
+        results, _ = await self.async_qdrant_client.scroll(
+            collection_name="knowledge_base_documents",
+            scroll_filter={
+                "must": [
+                    {"key": "document_id", "match": {"value": document_id}},
+                    {"key": "section_leaf", "match": {"value": section_leaf}},
+                ]
+            },
+            limit=limit,
+            with_payload=True,
+        )
+        # Giữ đúng thứ tự bảng gốc (chunk bị tách theo _split_large_table
+        # phải nối lại đúng thứ tự, không nối lộn dòng)
+        results.sort(key=lambda r: r.payload.get("chunk_index", 0))
+        return results
     async def hybrid_search(
         self,
         audience_ids: int,

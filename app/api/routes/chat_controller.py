@@ -455,7 +455,11 @@ async def stream_chat(
     intent_id_from_client = body.intent_id
     unit = body.unit
     top_k = os.getenv("TOP_K", 5)
+
     is_calendar_request = calendar_service.is_calendar_query(message)
+    is_check_list = False
+    
+
     # Guest user/session có ID random không tồn tại trong DB
     # → reset None để service tự tạo mới (giống WS cũ)
     from app.models.entities import Users, ChatSession
@@ -503,6 +507,7 @@ async def stream_chat(
                 check_listing = await service.llm_listing_check(message, unit)
                 print(f"Check listing is true: {check_listing}")
                 if check_listing:
+                    is_check_list = True
                     print(f"check admission and top K complete")
                     top_k = 20
 
@@ -565,7 +570,8 @@ async def stream_chat(
             check_listing = await service.llm_listing_check(enriched_query, unit)
             print(f"Check listing is true: {check_listing}")
             if check_listing:
-                local_top_k = 20
+                is_check_list = True
+                # local_top_k = 20
         else:
             enriched_query = await sse_service.enrich_query(session_id, message, unit)
       
@@ -648,6 +654,7 @@ async def stream_chat(
                     user_id,
                     intent_id,
                     message,
+                    unit
                 ):
                     yield _sse_event(
                         {
@@ -683,7 +690,42 @@ async def stream_chat(
                     f"qa_fallback_result confidence={confidence:.6f} sources={result.get('sources', [])}",
                     trace_id,
                 )
-
+        
+        if audience_id == 4 and is_check_list and tier_source == "document":
+            top_chunks = result.get("response", [])
+            if top_chunks:
+                anchor = top_chunks[0]  # chunk khớp nhất — dùng để xác định đúng bảng
+                anchor_doc_id = anchor.payload.get("document_id")
+                anchor_section = anchor.payload.get("section_leaf")
+                if anchor_section:
+                    full_section_chunks = await sse_service.get_chunks_by_section(
+                        document_id=anchor_doc_id,
+                        section_leaf=anchor_section,
+                    )
+                    if full_section_chunks:
+                        _chat_log(
+                            f"listing_expand: section={anchor_section} "
+                            f"got={len(full_section_chunks)} chunks (was {len(top_chunks)})",
+                            trace_id,
+                        )
+                        result["response"] = full_section_chunks
+                    else:
+                        _chat_log("listing_expand: no chunks found, fallback to original", trace_id)
+                else:
+                    # Tài liệu cũ chưa có section_leaf (chưa re-approve) → fallback về cách cũ
+                    _chat_log("listing_expand: section_leaf missing, fallback top_k=20", trace_id)
+                    fallback_doc_results = await sse_service.search_documents(
+                        enriched_query,
+                        audience_ids=audience_id,
+                        intent_id=intent_id_from_client,
+                        top_k=20,
+                        trace_id=trace_id,
+                        stage="listing_expand_fallback",
+                        query_embedding=result.get("query_embedding"),
+                        unit=unit,
+                    )
+                    result = sse_service.build_document_search_result(fallback_doc_results)
+                    confidence = result.get("confidence", 0.0)
         context_chunks = result["response"]
         intent_id = result["intent_id"]
         if sse_service.has_private_content(context_chunks) and not current_user:
@@ -771,6 +813,7 @@ async def stream_chat(
                 current_audience_id=audience_id,
                 current_intent_id=intent_id_from_client,
                 confidence=confidence,
+                unit=unit
             ):
                 piece = getattr(chunk, "content", str(chunk))
                 answer_text += piece

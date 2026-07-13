@@ -1216,14 +1216,10 @@ def api_approve_document(
                 print(f"DEBUG CHUNKING: Tổng số {len(chunks)} chunks được tạo.")
                 chunks = service._restructure_personnel_blocks(chunks, bdoc.title)
                 if chunks:
-                    print(
-                        f"DEBUG CHUNKING: Độ dài chunk đầu tiên: {len(chunks[0])} ký tự."
-                    )
-                doc_context = "\n".join(c for c in chunks[:5] if "| --- |" not in c)[
-                    :1500
-                ]
+                    print(f"DEBUG CHUNKING: Độ dài chunk đầu tiên: {len(chunks[0]['text'])} ký tự.")
+                # doc_context = "\n".join(c["text"] for c in chunks[:5] if "| --- |" not in c["text"])[:1500]
                 # chunks = service._enrich_table_chunks(chunks, doc_context)
-                print(f"DEBUG ENRICH: Enrich xong, tổng {len(chunks)} chunks.")
+                
             except Exception as e:
                 btask.status = "failed"
                 btask.error_message = f"Extraction failed: {str(e)}"
@@ -1256,7 +1252,7 @@ def api_approve_document(
             from qdrant_client.models import PointStruct
 
             for i, chunk in enumerate(chunks):
-                embedding = service.embeddings.embed_query(chunk)
+                embedding = service.embeddings.embed_query(chunk["text"])
                 point_id = str(uuid.uuid4())
                 print(f"FILE NAME WHEN APPROVE: {bdoc.title}")
                 service.qdrant_client.upsert(
@@ -1268,7 +1264,9 @@ def api_approve_document(
                             payload={
                                 "document_id": document_id,
                                 "chunk_index": i,
-                                "chunk_text": chunk,
+                                "chunk_text": chunk["text"],
+                                "section_path": chunk["section_path"], 
+                                "section_leaf": chunk["section_leaf"],  
                                 "audience_ids": audience_ids,
                                 "audience_names": filtered_audience_names,
                                 "target_units": bdoc.target_units,
