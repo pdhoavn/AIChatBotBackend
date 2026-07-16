@@ -100,29 +100,29 @@ class TrainingService:
                 "answer="
                 f"{os.getenv('GEMINI_ANSWER_MODEL', os.getenv('GEMINI_MODEL', 'gemini-2.0-flash'))}"
             )
-        elif llm_provider == "openai":
-            self.control_llm = init_chat_model(
-                model=os.getenv(
-                    "OPENAI_CONTROL_MODEL",
-                    os.getenv("LLM_MODEL", "gpt-4.1-mini"),
-                ),
-                api_key=self.ai_api_key,
-                temperature=float(os.getenv("OPENAI_CONTROL_TEMPERATURE", 0)),
-            )
-            self.answer_llm = init_chat_model(
-                model=os.getenv(
-                    "OPENAI_ANSWER_MODEL",
-                    os.getenv("LLM_MODEL", "gpt-4.1-mini"),
-                ),
-                api_key=self.ai_api_key,
-                temperature=float(os.getenv("OPENAI_ANSWER_TEMPERATURE", 0)),
-            )
-            print(
-                "OpenAI LLM enabled: control="
-                f"{os.getenv('OPENAI_CONTROL_MODEL', os.getenv('LLM_MODEL', 'gpt-4.1-mini'))}, "
-                "answer="
-                f"{os.getenv('OPENAI_ANSWER_MODEL', os.getenv('LLM_MODEL', 'gpt-4.1-mini'))}"
-            )
+        # elif llm_provider == "openai":
+        #     self.control_llm = init_chat_model(
+        #         model=os.getenv(
+        #             "OPENAI_CONTROL_MODEL",
+        #             os.getenv("LLM_MODEL", "gpt-4.1-mini"),
+        #         ),
+        #         api_key=self.ai_api_key,
+        #         temperature=float(os.getenv("OPENAI_CONTROL_TEMPERATURE", 0)),
+        #     )
+        #     self.answer_llm = init_chat_model(
+        #         model=os.getenv(
+        #             "OPENAI_ANSWER_MODEL",
+        #             os.getenv("LLM_MODEL", "gpt-4.1-mini"),
+        #         ),
+        #         api_key=self.ai_api_key,
+        #         temperature=float(os.getenv("OPENAI_ANSWER_TEMPERATURE", 0)),
+        #     )
+        #     print(
+        #         "OpenAI LLM enabled: control="
+        #         f"{os.getenv('OPENAI_CONTROL_MODEL', os.getenv('LLM_MODEL', 'gpt-4.1-mini'))}, "
+        #         "answer="
+        #         f"{os.getenv('OPENAI_ANSWER_MODEL', os.getenv('LLM_MODEL', 'gpt-4.1-mini'))}"
+        #     )
         else:
             self.control_llm = self.openai_llm
             self.answer_llm = self.openai_llm
@@ -331,6 +331,7 @@ class TrainingService:
     Giải quyết các vấn đề về học tập, điểm thi, mở lớp, thi cử, văn bằng, chứng chỉ, xác nhận sinh viên (để vay vốn, làm thủ tục hành chính.
     Cấp bảng điểm, xử lý các quyết định liên quan đến sinh viên như chuyển điểm, thôi học, chuyển hệ.
     Phụ trách công tác tốt nghiệp, xét nhận đề tài, thành lập hội đồng.
+    Thủ tục hoãn nghĩa vụ quân sự
     Tổ chức đào tạo GDQP-AN.
     Địa chỉ: Phòng 8, 9, 10 Nhà D3, số 450 Lê Văn Việt, P. Tăng Nhơn Phú, TP. Hồ Chí Minh
     Điện thoại: (028) 3896 2018; (028) 3730 7908
@@ -1276,7 +1277,9 @@ Câu hỏi mới:
         unit: Optional[str] = None,
     ):
         print("vào doc stream")
-        
+        model_name = getattr(self.answer_llm, "model", None) or getattr(self.answer_llm, "model_name", "Không rõ")
+        print(f"Tên Model đang cấu hình: {model_name}")
+        print("==============================================\n")
         db = SessionLocal()
         suggestion_threshold = float(os.getenv("CONFIDENCE_SCORE", 0.35))
         try:

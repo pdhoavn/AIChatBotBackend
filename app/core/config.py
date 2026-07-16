@@ -15,7 +15,10 @@ class Settings(BaseSettings):
     QDRANT_PORT: str
     QDRANT_API_KEY: str
     QDRANT_COLLECTION_NAME: str
-
+    GEMINI_API_KEY: str
+    LLM_PROVIDER: str
+    GEMINI_CONTROL_MODEL: str
+    GEMINI_ANSWER_MODEL: str
     EMBEDDING_MODEL: str
     LLM_MODEL: str
     CHAT_UNIVERSITY_NAME: str
