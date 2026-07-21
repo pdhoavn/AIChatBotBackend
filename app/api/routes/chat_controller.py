@@ -513,6 +513,7 @@ async def stream_chat(
 
     async def event_generator():
         local_top_k = top_k
+        nonlocal is_check_list
         # Gửi session info
         yield _sse_event({"event": "session", "session_id": session_id})
 

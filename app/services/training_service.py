@@ -709,17 +709,18 @@ Câu hỏi mới:
             này ở các lượt trả lời trước.
             - Ví dụ SAI: "QĐ1821" → "Quyết định 1821 về cơ sở vật chất của UTC2"
             - Ví dụ ĐÚNG: "QĐ1821" → giữ nguyên "QĐ1821"
-        7. QUY TẮC XỬ LÝ TRUY VẤN TÌM KIẾM NHÂN SỰ:
-        + NẾU câu hỏi CÓ CHỨA TÊN RIÊNG CỤ THỂ của một người để hỏi về thân phận, chức vụ (Ví dụ: "Đặng Văn Ơn là ai?", "ThS Đặng Văn Ơn làm gì?"):
+        7. QUY TẮC XỬ LÝ TRUY VẤN TÌM KIẾM NHÂN SỰ (ĐỌC KỸ ĐỂ PHÂN BIỆT):
+        + TRƯỜNG HỢP 1 - TÌM THEO TÊN NGƯỜI: 
+        NẾU câu hỏi CÓ CHỨA TÊN RIÊNG CỦA MỘT CON NGƯỜI THẬT (Ví dụ: "Đặng Văn Ơn là ai?", "ThS Nguyễn Văn A làm gì?"):
         -> BẮT BUỘC bọc TÊN RIÊNG đó trong dấu ngoặc kép "".
         -> BẮT BUỘC bổ sung thêm các cụm từ: "chức vụ", "phòng ban", "đơn vị công tác".
-        -> Ví dụ: User hỏi "ông đặng văn ơn có chức vụ gì" => Viết lại thành: Tìm chức vụ, đơn vị công tác và phòng ban của "Đặng Văn Ơn".
+        -> Ví dụ: User hỏi "ông đặng văn ơn có chức vụ gì" => Viết lại: Tìm chức vụ, đơn vị công tác và phòng ban của "Đặng Văn Ơn".
 
-        + NGOẠI TRỪ (ĐIỀU KIỆN CẤM): NẾU người dùng CHỈ nhập một CHỨC DANH/VỊ TRÍ chung chung (Ví dụ: "giám đốc phân hiệu", "phó giám đốc", "trưởng phòng", "kế toán") mà KHÔNG ĐI KÈM TÊN RIÊNG cụ thể:
-        -> TUYỆT ĐỐI KHÔNG áp dụng quy tắc trên. 
-        -> KHÔNG tự động chèn thêm chữ "chức vụ, phòng ban".
-        -> KHÔNG bọc ngoặc kép chức danh, KHÔNG tự động chèn thêm chữ "chức vụ, phòng ban". 
-        
+        + TRƯỜNG HỢP 2 - TÌM NGƯỜI GIỮ CHỨC VỤ (ĐIỀU KIỆN CẤM THÊM TỪ KHÓA NHIỄU): 
+        NẾU người dùng hỏi xem AI ĐANG GIỮ MỘT CHỨC VỤ nào đó (kể cả chức vụ chung chung như "giám đốc" hay chức vụ gắn liền với đơn vị như "trưởng khoa công trình") HOẶC KHÔNG có tên người thật:
+        -> TUYỆT ĐỐI KHÔNG bọc ngoặc kép chức danh.
+        -> VIẾT LẠI câu truy vấn theo cấu trúc sau để hệ thống dễ tra cứu: "Tìm thông tin nhân sự, chức danh lãnh đạo của đơn vị: [Tên đơn vị/Chức vụ]".
+        -> Ví dụ: "trưởng khoa công trình là ai" => Viết lại: "Tìm thông tin nhân sự, chức danh lãnh đạo của đơn vị: Trưởng khoa Công trình"
 
         8. Quy tắc điều hướng chủ thể truy vấn (Default Routing):
             - Nhận diện câu hỏi của người dùng. NẾU người dùng hỏi về các nghiệp vụ "mua sắm", "quy trình mua sắm thiết bị" một cách CHUNG CHUNG (nghĩa là trong câu hỏi KHÔNG có tên của bất kỳ phòng ban nào):
