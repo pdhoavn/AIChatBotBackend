@@ -723,9 +723,12 @@ Câu hỏi mới:
         -> Ví dụ: "trưởng khoa công trình là ai" => Viết lại: "Tìm thông tin nhân sự, chức danh lãnh đạo của đơn vị: Trưởng khoa Công trình"
 
         8. Quy tắc điều hướng chủ thể truy vấn (Default Routing):
-            - Nhận diện câu hỏi của người dùng. NẾU người dùng hỏi về các nghiệp vụ "mua sắm", "quy trình mua sắm thiết bị" một cách CHUNG CHUNG (nghĩa là trong câu hỏi KHÔNG có tên của bất kỳ phòng ban nào):
+            - Nhận diện câu hỏi của người dùng. - CHỈ KHI NÀO câu hỏi của người dùng có chứa CHÍNH XÁC một trong các từ khóa sau: "mua sắm", "sửa chữa", "mua thay thế", "vật tư thiết bị":
                 + BẮT BUỘC tự động bổ sung cụm từ "của Phòng Thiết bị - Quản trị" vào câu truy vấn được làm giàu.
-                + Ví dụ: Query gốc: "Cho tôi biết quy trình mua sắm thiết bị" -> Query mới: "Quy trình mua sắm thiết bị của Phòng Thiết bị - Quản trị".
+                + Ví dụ 1: Query gốc: "Cho tôi biết quy trình mua sắm thiết bị" -> Query mới: "Quy trình mua sắm thiết bị của Phòng Thiết bị - Quản trị".
+            - NGOÀI CÁC TỪ KHÓA TRÊN, ĐỐI VỚI TẤT CẢ CÁC NGHIỆP VỤ KHÁC (ví dụ: "tạm ứng", "nghỉ phép", "thanh toán",...): 
+                + TUYỆT ĐỐI KHÔNG áp dụng quy tắc này.
+                + TUYỆT ĐỐI KHÔNG tự suy diễn, KHÔNG tự thêm tên bất kỳ phòng ban nào nếu người dùng không nhắc đến. Chỉ giữ nguyên câu hỏi gốc.
             - NẾU người dùng đã chỉ định đích danh một phòng ban trong câu hỏi (Ví dụ: "mua sắm bên phòng khoa học công nghệ", "phòng KHCN mua sắm ra sao"):
                 + GIỮ NGUYÊN chủ đích của người dùng, TUYỆT ĐỐI KHÔNG tự ý chèn thêm tên Phòng Thiết bị - Quản trị vào truy vấn.
         10. QUY TẮC GIẢI MÃ TỪ VIẾT TẮT VÀ TIẾNG LÓNG HỌC ĐƯỜNG:
@@ -741,6 +744,14 @@ Câu hỏi mới:
               + "khcn" ──> "khoa học công nghệ"
               + "tbqt" ──> "thiết bị quản trị"
             - ĐIỀU KHOẢN MIỄN TRỪ: Việc giải mã và mở rộng các từ viết tắt này để làm rõ nghĩa câu hỏi được tính là hành vi "Khôi phục ngữ cảnh hợp lệ", TUYỆT ĐỐI KHÔNG bị tính là vi phạm quy tắc "KHÔNG BỊA ĐẶT" ở Mục 2.
+        11. QUY TẮC ĐIỀU HƯỚNG TÌM KIẾM BIỂU MẪU VÀ ĐƯỜNG DẪN:
+            - NẾU câu hỏi gốc của người dùng có yêu cầu xin "link", "đường dẫn", hoặc có các từ khóa "biểu mẫu", "mẫu đơn", "phiếu":
+                + BẮT BUỘC tự động bổ sung cụm từ "kèm Link drive trong Các Biểu Mẫu" vào vị trí cuối cùng của câu truy vấn được làm giàu (để khớp với định dạng link trong cơ sở dữ liệu).
+               
+                + Ví dụ 1: Query gốc: "cho tôi xin link mẫu đơn xin nghỉ học tạm thời" 
+                  -> Query mới: "link mẫu đơn xin nghỉ học tạm thời kèm Link drive trong Các Biểu Mẫu"
+                + Ví dụ 2 (Giao thoa Rule 8): Query gốc: "xin link biểu mẫu phiếu đề nghị sửa chữa vật tư" 
+                  -> Query mới: "link biểu mẫu phiếu đề nghị sửa chữa vật tư của Phòng Thiết bị - Quản trị kèm Link drive trong Các Biểu Mẫu"
         === QUY TẮC MỞ RỘNG TỪ ĐỒNG NGHĨA ===
         Nếu câu hỏi của người dùng chứa BẤT KỲ TỪ NÀO thuộc một trong các Nhóm dưới đây, BẮT BUỘC phải viết lại câu hỏi bằng cách chèn thêm TẤT CẢ các từ còn lại cùng Nhóm đó vào câu. 
         (Quy tắc này BẮT BUỘC THỰC HIỆN, ghi đè lên quy tắc "Giữ nguyên nếu đã rõ ràng").
@@ -1316,7 +1327,7 @@ Câu hỏi mới:
             chat_history = mem_vars.get("chat_history", "")
             full_response = ""
             suggestion = None
-
+            
             print("→ going to LLM context")
             print(context)
             prompt = f"""Bạn là một chatbot tra cứu thông tin chuyên nghiệp của trường {university_name}
@@ -1334,7 +1345,7 @@ Câu hỏi mới:
                 - Trả lời bằng tiếng Việt
                 - Dùng ngôn ngữ đời thường
                 - Dùng Markdown linh hoạt: chỉ dùng tiêu đề ## và gạch đầu dòng khi câu trả lời có nhiều mục rõ ràng. Câu trả lời ngắn thì viết thành đoạn văn tự nhiên, không cần chia heading.
-                - Nếu trong câu trả lời có đường dẫn thì hãy markdown đường dẫn
+                - Nếu trong câu trả lời có đường dẫn, BẮT BUỘC phải in trực tiếp toàn bộ đường dẫn gốc (raw URL) ra màn hình. TUYỆT ĐỐI KHÔNG dùng cú pháp Markdown [text](url) để ẩn đường dẫn dưới dạng văn bản.
             Không được:
                 - TUYỆT ĐỐI KHÔNG dùng các từ ngữ hạ mình, phục dịch, tư vấn sale như: "Dạ", "Vâng", "Dạ có ạ", "Dạ vâng", hoặc thêm chữ "ạ" ở cuối câu. (Ví dụ: Thay vì "Dạ có ạ", hãy trả lời dứt khoát "Có." hoặc "Chào bạn, nhà trường có yêu cầu...").
                 - Lặp lại ý người dùng
